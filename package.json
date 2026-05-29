@@ -1,0 +1,13 @@
+{
+  "name": "gold-signal",
+  "version": "1.0.0",
+  "description": "Gold Signal app service prototype",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["gold", "investment", "news", "community"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {}
+}

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gold Signal</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="앱 내비게이션">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">G</div>
+          <div>
+            <strong>Gold Signal</strong>
+            <span>실시간 금속 뉴스 터미널</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="주요 화면">
+          <button class="nav-button active" data-view="dashboard" type="button"><span aria-hidden="true">●</span> 홈</button>
+          <button class="nav-button" data-view="indicators" type="button"><span aria-hidden="true">◆</span> 지표</button>
+          <button class="nav-button" data-view="news" type="button"><span aria-hidden="true">▲</span> 뉴스</button>
+          <button class="nav-button" data-view="community" type="button"><span aria-hidden="true">■</span> 커뮤니티</button>
+        </nav>
+
+        <section class="side-section">
+          <span class="section-label">오늘의 신호</span>
+          <strong id="sideSignal">실질금리 상승, 달러 강세</strong>
+          <p>단기 금 가격에는 부담 요인이 우세합니다.</p>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">실시간 금속 모니터</p>
+            <h1 id="pageTitle">대시보드</h1>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboardView" aria-labelledby="dashboardTitle">
+          <h2 id="dashboardTitle" class="sr-only">대시보드</h2>
+          <section class="panel home-index-panel">
+            <div class="panel-header">
+              <div>
+                <span class="section-label">금속 시세</span>
+                <h3>실시간 금·은 가격</h3>
+              </div>
+            </div>
+            <div class="home-index-list" id="marketBoard"></div>
+          </section>
+
+          <section class="panel home-index-panel">
+            <div class="panel-header">
+              <div>
+                <span class="section-label">주요 지표</span>
+                <h3>금값에 영향 주는 지표</h3>
+              </div>
+              <button class="text-button" data-view-jump="indicators" type="button">전체 보기</button>
+            </div>
+            <div class="home-index-list" id="homeIndexList"></div>
+          </section>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <span class="section-label">속보 뉴스</span>
+                  <h3>실시간 속보</h3>
+                </div>
+                <button class="text-button" data-view-jump="news" type="button">뉴스 보기</button>
+              </div>
+              <div class="news-list compact" id="dashboardNews"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <span class="section-label">커뮤니티</span>
+                  <h3>인기 토론</h3>
+                </div>
+                <button class="text-button" data-view-jump="community" type="button">참여하기</button>
+              </div>
+              <div class="post-list compact" id="dashboardPosts"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="indicatorsView" aria-labelledby="indicatorsTitle">
+          <div class="view-heading">
+            <h2 id="indicatorsTitle" class="sr-only">경제 지표</h2>
+            <div class="segmented" role="tablist" aria-label="지표 주기">
+              <button class="segment active" data-indicator-group="daily" type="button">매일</button>
+              <button class="segment" data-indicator-group="monthly" type="button">매월</button>
+            </div>
+          </div>
+          <div class="indicator-detail-layout">
+            <div class="panel">
+              <div class="indicator-list large" id="indicatorList"></div>
+            </div>
+            <aside class="panel detail-panel" id="indicatorDetail"></aside>
+          </div>
+        </section>
+
+        <section class="view" id="newsView" aria-labelledby="newsTitle">
+          <div class="view-heading">
+            <h2 id="newsTitle" class="sr-only">금 시장 뉴스</h2>
+            <label class="toggle-row">
+              <input id="pushToggle" type="checkbox" checked>
+              <span>중요 뉴스 푸시</span>
+            </label>
+          </div>
+          <section class="panel news-feed-panel">
+            <div class="news-list simple" id="newsList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="communityView" aria-labelledby="communityTitle">
+          <div class="view-heading">
+            <h2 id="communityTitle" class="sr-only">금 투자자 커뮤니티</h2>
+            <button class="primary-button" id="communityWriteButton" type="button">새 글 작성</button>
+          </div>
+          <section class="panel community-feed-panel">
+            <div class="community-sort" role="tablist" aria-label="게시글 정렬">
+              <button class="sort-button active" data-post-sort="latest" type="button">최신순</button>
+              <button class="sort-button" data-post-sort="hot" type="button">인기순</button>
+            </div>
+            <div class="post-list" id="postList"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="postModal">
+      <form method="dialog" class="modal-body" id="postForm">
+        <div class="panel-header">
+          <div>
+            <span class="section-label">Community</span>
+            <h3>새 글 작성</h3>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" aria-label="닫기" title="닫기">×</button>
+        </div>
+        <label>
+          제목
+          <input id="postTitle" type="text" maxlength="80" required placeholder="제목을 입력하세요">
+        </label>
+        <label>
+          본문
+          <textarea id="postBody" rows="5" required placeholder="의견을 입력하세요"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="secondary-button" value="cancel" type="submit">취소</button>
+          <button class="primary-button" id="submitPost" value="default" type="submit">등록</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
