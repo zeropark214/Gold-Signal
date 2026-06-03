@@ -44,6 +44,63 @@
 - 가능한 경우 공식 RSS, 공식 API, 라이선스 뉴스 피드를 우선 사용한다.
 - 크롤링이 필요한 경우 각 언론사의 이용약관과 robots.txt 허용 범위를 확인한다.
 
+## 구현 파이프라인
+
+1. 공식 RSS, 공식 API, 라이선스 피드에서 원문 메타데이터를 수집한다.
+2. 제목, 설명, 출처, 발행 시간, 원문 링크를 표준 스키마로 정규화한다.
+3. 금값 영향 요인 키워드로 1차 필터링한다.
+4. 동일 이슈를 `clusterKey`로 묶어 중복 노출을 줄인다.
+5. 영향 요인 태그, 관련 자산, 중요도, 영향 점수를 산정한다.
+6. 한국어 헤드라인과 요약을 생성한다.
+7. `/api/news` 응답으로 프론트 뉴스 탭에 제공한다.
+8. `속보` 또는 `중요` 뉴스만 푸시 알림 후보로 분류한다.
+
+## 뉴스 API 응답 스키마
+
+```json
+{
+  "updatedAt": "2026-06-03T13:40:00.000Z",
+  "items": [
+    {
+      "id": "fed-rate-cuts-001",
+      "titleKo": "Fed 인사, 금리 인하 신중론 언급",
+      "titleOriginal": "Fed official signals caution on rate cuts",
+      "source": "Example US News",
+      "publishedAt": "2026-06-03T13:35:00.000Z",
+      "url": "https://example.com/fed-rate-cuts",
+      "tags": ["금리", "달러", "국채금리"],
+      "priority": "속보",
+      "impactScore": 92,
+      "relatedAssets": ["국제 금", "DXY", "10년물 금리"],
+      "highlights": ["금리 인하 기대 약화", "달러 강세 가능성"],
+      "summaryKo": "연준 인사의 신중한 발언으로 금리 인하 기대가 낮아질 가능성이 있습니다.",
+      "clusterKey": "fed-rate-cut-caution",
+      "duplicateCount": 3
+    }
+  ]
+}
+```
+
+## 필터링 키워드 기준
+
+- 금리 및 연준: `Fed`, `FOMC`, `rate cut`, `rate hike`, `higher for longer`
+- 국채금리: `Treasury yield`, `10-year yield`, `2-year yield`, `real yield`, `TIPS`
+- 달러: `dollar`, `DXY`, `USD`, `greenback`
+- 물가: `CPI`, `PCE`, `PPI`, `inflation`, `inflation expectations`
+- 고용: `payrolls`, `jobs report`, `unemployment`, `wages`, `jobless claims`
+- 경기: `recession`, `GDP`, `retail sales`, `PMI`, `ISM`
+- 지정학: `war`, `sanctions`, `Middle East`, `geopolitical risk`
+- 원자재: `oil`, `WTI`, `Brent`, `commodities`, `OPEC`
+- 금 직접: `gold`, `bullion`, `gold ETF`, `central bank gold`
+
+## 중요도 및 영향 점수
+
+- `속보`: 금리, 달러, 물가, 고용, 지정학 리스크처럼 금값에 즉각 반응할 가능성이 큰 뉴스
+- `중요`: 금값 방향성에 영향을 줄 수 있으나 즉각성은 낮은 뉴스
+- `일반`: 배경 정보 또는 참고용 뉴스
+- 영향 점수는 `출처 신뢰도 + 영향 요인 가중치 + 속보성 + 관련 자산 수 + 중복 보도 묶음 크기 - 시간 감쇠` 기준으로 산정한다.
+- 동일 이슈의 중복 뉴스는 대표 뉴스 1건을 목록에 보여주고 `duplicateCount`로 묶음 규모를 표시한다.
+
 ## 수집 출처 범위
 
 - 경제 전문 매체

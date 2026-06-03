@@ -1,4 +1,4 @@
-const dailyIndicators = [
+let dailyIndicators = [
   {
     name: '미국 10년물 실질금리',
     value: '2.12%',
@@ -16,6 +16,15 @@ const dailyIndicators = [
     impact: 'down',
     summary: '명목금리 상승은 이자를 주지 않는 금의 상대 매력을 낮출 수 있습니다.',
     related: '실질금리, FOMC, 달러지수',
+  },
+  {
+    name: '미국 GDP 대비 부채 비율',
+    value: '120.4%',
+    compare: '이전 119.8%',
+    change: '+0.60%p',
+    impact: 'up',
+    summary: 'GDP 대비 부채 비율 상승은 미국 재정 건전성 우려와 장기 안전자산 수요를 자극할 수 있습니다.',
+    related: '미국 국채금리, 달러지수, 재정적자',
   },
   {
     name: '달러지수 DXY',
@@ -149,33 +158,69 @@ const homeIndices = [
   },
 ];
 
-const monthlyIndicators = [
+let monthlyIndicators = [
   {
-    name: 'PCE·근원 PCE',
+    name: 'PCE',
     value: '2.8%',
-    compare: '예상 2.7% / 이전 2.8%',
+    compare: '이전 2.7%',
     change: '예상 상회',
     impact: 'down',
     summary: '연준이 선호하는 물가 지표가 예상보다 높으면 금리 인하 기대가 약해질 수 있습니다.',
     related: 'FOMC, 실질금리, 달러지수',
   },
   {
-    name: 'CPI·근원 CPI',
+    name: '근원 PCE',
+    value: '2.8%',
+    compare: '이전 2.8%',
+    change: '높은 기저 유지',
+    impact: 'down',
+    summary: '식품과 에너지를 제외한 근원 PCE가 높으면 연준의 물가 경계가 이어질 수 있습니다.',
+    related: 'PCE, FOMC, 실질금리',
+  },
+  {
+    name: 'CPI',
     value: '3.4%',
-    compare: '예상 3.3% / 이전 3.2%',
+    compare: '이전 3.2%',
     change: '예상 상회',
     impact: 'down',
     summary: 'CPI가 예상보다 높으면 국채금리와 달러가 상승해 금값에 부담이 될 수 있습니다.',
     related: 'PCE, 국채금리, FedWatch',
   },
   {
-    name: '고용보고서 NFP·실업률·임금',
+    name: '근원 CPI',
+    value: '3.6%',
+    compare: '이전 3.5%',
+    change: '근원 물가 압력',
+    impact: 'down',
+    summary: '근원 CPI는 서비스 물가와 임금 압력을 반영해 금리 전망에 영향을 줄 수 있습니다.',
+    related: 'CPI, 임금, 서비스 물가',
+  },
+  {
+    name: '고용보고서',
     value: '+175K',
-    compare: '예상 +190K / 실업률 3.9%',
+    compare: '이전 +190K',
     change: '고용 둔화',
     impact: 'up',
     summary: '고용 둔화는 금리 인하 기대와 안전자산 선호를 높일 수 있습니다.',
     related: '평균 시간당 임금, 실업률',
+  },
+  {
+    name: '실업률',
+    value: '3.9%',
+    compare: '이전 3.8%',
+    change: '실업률 상승',
+    impact: 'up',
+    summary: '실업률 상승은 경기 둔화와 금리 인하 기대를 키워 금값에 우호적일 수 있습니다.',
+    related: '고용보고서, 임금, 경기',
+  },
+  {
+    name: '임금',
+    value: '+0.3%',
+    compare: '이전 +0.4%',
+    change: '임금 둔화',
+    impact: 'up',
+    summary: '임금 상승세 둔화는 물가 압력을 낮춰 금리 인하 기대에 우호적일 수 있습니다.',
+    related: '고용보고서, CPI, PCE',
   },
   {
     name: '소매판매',
@@ -185,15 +230,6 @@ const monthlyIndicators = [
     impact: 'up',
     summary: '소비 둔화는 경기 냉각 신호로 해석되어 금 수요에 우호적일 수 있습니다.',
     related: 'GDP, 소비자심리',
-  },
-  {
-    name: 'ISM 제조업·서비스업',
-    value: '49.2 / 51.4',
-    compare: '기준선 50',
-    change: '혼재',
-    impact: 'neutral',
-    summary: '제조업 위축과 서비스업 확장이 엇갈려 금값 영향은 다른 지표 확인이 필요합니다.',
-    related: 'PMI, 고용, 가격지수',
   },
   {
     name: 'GDP',
@@ -215,62 +251,66 @@ const monthlyIndicators = [
   },
 ];
 
-const newsItems = [
+let newsItems = [
   {
-    title: 'Fed 인사, 금리 인하 신중론 언급',
-    original: 'Fed official signals caution on rate cuts',
+    id: 'fallback-fed-rate-cuts',
+    titleKo: 'Fed 인사, 금리 인하 신중론 언급',
+    titleOriginal: 'Fed official signals caution on rate cuts',
     source: 'Example US News',
-    time: '5분 전',
+    publishedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     tags: ['금리', '달러', '국채금리'],
     priority: '속보',
     impactScore: 92,
-    assets: ['국제 금', 'DXY', '10년물 금리'],
-    comments: 28,
+    relatedAssets: ['국제 금', 'DXY', '10년물 금리'],
     highlights: ['금리 인하 기대 약화', '달러 강세 가능성', '단기 금값 부담'],
-    summary: '연준 인사의 신중한 발언으로 금리 인하 기대가 낮아지며 달러와 국채금리가 상승할 가능성이 있습니다.',
+    summaryKo: '연준 인사의 신중한 발언으로 금리 인하 기대가 낮아지며 달러와 국채금리가 상승할 가능성이 있습니다.',
     url: 'https://example.com/fed-rate-cuts',
+    duplicateCount: 3,
   },
   {
-    title: '달러지수 상승, 금 현물 가격 압박',
-    original: 'Dollar climbs as Treasury yields rise',
+    id: 'fallback-dollar-yields',
+    titleKo: '달러지수 상승, 금 현물 가격 압박',
+    titleOriginal: 'Dollar climbs as Treasury yields rise',
     source: 'Market Wire',
-    time: '18분 전',
+    publishedAt: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
     tags: ['달러', '미국 국채금리'],
     priority: '중요',
     impactScore: 84,
-    assets: ['국제 금', '국내 금', '원/달러'],
-    comments: 17,
+    relatedAssets: ['국제 금', '국내 금', '원/달러'],
     highlights: ['달러 강세', '국채금리 상승', '금 현물 압박'],
-    summary: '달러 강세와 국채금리 상승이 동시에 나타나며 금 현물 가격에 단기 하락 압력이 커졌습니다.',
+    summaryKo: '달러 강세와 국채금리 상승이 동시에 나타나며 금 현물 가격에 단기 하락 압력이 커졌습니다.',
     url: 'https://example.com/dollar-gold',
+    duplicateCount: 2,
   },
   {
-    title: '중앙은행 금 매입, 3개월 연속 확대',
-    original: 'Central banks extend gold buying streak',
+    id: 'fallback-central-bank-gold',
+    titleKo: '중앙은행 금 매입, 3개월 연속 확대',
+    titleOriginal: 'Central banks extend gold buying streak',
     source: 'Global Finance Daily',
-    time: '42분 전',
+    publishedAt: new Date(Date.now() - 42 * 60 * 1000).toISOString(),
     tags: ['중앙은행 금 매입'],
     priority: '중요',
     impactScore: 78,
-    assets: ['국제 금', '금 ETF'],
-    comments: 11,
+    relatedAssets: ['국제 금', '금 ETF'],
     highlights: ['중앙은행 매입 확대', '장기 수요 지지', '하방 완충 요인'],
-    summary: '신흥국 중앙은행 중심의 금 매입 확대는 장기 수요를 지지하는 요인으로 해석됩니다.',
+    summaryKo: '신흥국 중앙은행 중심의 금 매입 확대는 장기 수요를 지지하는 요인으로 해석됩니다.',
     url: 'https://example.com/central-bank-gold',
+    duplicateCount: 1,
   },
   {
-    title: '유가 반등에 인플레이션 기대 재점화',
-    original: 'Oil rebound revives inflation concerns',
+    id: 'fallback-oil-inflation',
+    titleKo: '유가 반등, 인플레이션 경로 재부각',
+    titleOriginal: 'Oil rebound puts inflation path back in focus',
     source: 'Energy Desk',
-    time: '1시간 전',
-    tags: ['원자재', '인플레이션'],
+    publishedAt: new Date(Date.now() - 72 * 60 * 1000).toISOString(),
+    tags: ['유가', '인플레이션'],
     priority: '일반',
     impactScore: 63,
-    assets: ['국제 금', '유가', 'CPI'],
-    comments: 6,
-    highlights: ['유가 반등', '물가 우려', 'PCE 확인 필요'],
-    summary: '유가 상승은 향후 물가 지표와 기대인플레이션에 영향을 줄 수 있어 금 시장도 주시하고 있습니다.',
+    relatedAssets: ['WTI', 'CPI', '국제 금'],
+    highlights: ['유가 상승', '물가 경로 재부각', '연준 경계감'],
+    summaryKo: '유가 상승은 향후 물가 지표와 기대인플레이션에 영향을 줄 수 있어 금 시장도 주시하고 있습니다.',
     url: 'https://example.com/oil-inflation',
+    duplicateCount: 1,
   },
 ];
 
@@ -289,59 +329,94 @@ const rooms = [
 
 let posts = [
   {
+    id: 1,
     title: '오늘 CPI 이후 금 어떻게 보시나요?',
     body: 'CPI가 예상보다 높게 나오면 단기 조정 가능성을 보고 있습니다. 다만 ETF 흐름은 좋아 보여서 분할 접근이 나을까요?',
     room: '경제 지표 토론',
-    author: 'gold_user',
-    badge: '금 투자자',
+    author: 'cpi_watch',
+    badge: '경제 지표 관심',
+    avatar: 'C',
     time: '방금 전',
     comments: 12,
     likes: 24,
     hot: 92,
+    commentItems: [
+      { author: 'macro_watch', time: '방금 전', body: '예상 상회면 단기 조정은 열어둬야 할 것 같습니다.' },
+      { author: 'etf_user', time: '3분 전', body: '저는 ETF 흐름이 꺾이는지도 같이 보려고요.' },
+    ],
   },
   {
+    id: 2,
     title: '금 ETF랑 실물 금 중 뭐가 나을까요?',
     body: '장기 보유 목적이면 ETF 수수료와 실물 보관 비용을 같이 봐야 할 것 같습니다.',
     room: '금 ETF',
     author: 'etf_user',
     badge: 'ETF 투자자',
+    avatar: 'E',
     time: '15분 전',
     comments: 8,
     likes: 10,
     hot: 61,
+    commentItems: [
+      { author: 'long_gold', time: '10분 전', body: '환금성은 ETF가 편하고, 실물은 보관 비용을 꼭 봐야 합니다.' },
+    ],
   },
   {
+    id: 3,
     title: '실질금리 상승인데 중앙은행 매입은 계속 강하네요',
     body: '단기 가격과 장기 수급이 반대로 움직이는 구간이라 해석이 어렵습니다.',
     room: '실시간 시황',
     author: 'macro_watch',
     badge: '활발한 참여자',
+    avatar: 'M',
     time: '34분 전',
     comments: 19,
     likes: 31,
     hot: 110,
+    commentItems: [
+      { author: 'long_gold', time: '12분 전', body: '단기 매크로랑 장기 수급을 분리해서 보는 게 낫다고 봅니다.' },
+      { author: 'macro_watch', time: '28분 전', body: '실질금리 둔화 신호가 나오면 반응이 빨라질 수 있어요.' },
+    ],
   },
 ];
+
+const currentUser = {
+  isLoggedIn: true,
+  nickname: 'gold_user',
+  badge: '금 투자자',
+  avatar: '金',
+  avatarImage: '',
+};
 
 const state = {
   view: 'dashboard',
   newsFilter: '전체',
   selectedNews: 0,
+  selectedNewsId: newsItems[0].id,
   postSort: 'latest',
+  selectedRoom: '전체',
+  expandedPostId: posts[0].id,
+  likedPostIds: new Set(),
 };
 
 const views = {
   dashboard: document.querySelector('#dashboardView'),
   indicators: document.querySelector('#indicatorsView'),
   news: document.querySelector('#newsView'),
+  newsDetail: document.querySelector('#newsDetailView'),
   community: document.querySelector('#communityView'),
+  profile: document.querySelector('#profileView'),
+  profileEdit: document.querySelector('#profileEditView'),
 };
 
 const pageTitles = {
   dashboard: '대시보드',
   indicators: '경제 지표',
   news: '뉴스',
+  newsDetail: '뉴스 상세',
   community: '커뮤니티',
+  profile: '마이페이지',
+  profileEdit: '프로필 편집',
 };
 
 function impactClass(impact) {
@@ -363,9 +438,20 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove('show'), 2200);
 }
 
+function avatarMarkup(label, image = '') {
+  return image
+    ? `<img src="${image}" alt="">`
+    : label;
+}
+
+function renderAvatar(element, label, image = '') {
+  element.innerHTML = avatarMarkup(label, image);
+}
+
 function setView(view) {
   state.view = view;
   document.querySelector('#pageTitle').textContent = pageTitles[view];
+  document.querySelector('.app-shell').classList.toggle('depth-mode', ['newsDetail', 'profile', 'profileEdit'].includes(view));
   Object.entries(views).forEach(([key, element]) => {
     element.classList.toggle('active', key === view);
   });
@@ -404,6 +490,19 @@ function renderIndicatorRows(container, indicators) {
 function renderIndicators() {
   renderIndicatorRows(document.querySelector('#dailyIndicatorList'), dailyIndicators);
   renderIndicatorRows(document.querySelector('#monthlyIndicatorList'), monthlyIndicators);
+}
+
+async function loadIndicators() {
+  try {
+    const response = await fetch('/api/indicators');
+    if (!response.ok) throw new Error('지표 API 응답 실패');
+    const data = await response.json();
+    dailyIndicators = data.daily || dailyIndicators;
+    monthlyIndicators = data.monthly || monthlyIndicators;
+    renderIndicators();
+  } catch (error) {
+    showToast('지표 API 연결 전이라 샘플 지표를 표시합니다.');
+  }
 }
 
 function sparkline(points) {
@@ -497,17 +596,6 @@ function renderGoldDetail(item) {
         <button type="button">5년</button>
         <button class="range-chart-icon" type="button" aria-label="차트 보기"></button>
       </div>
-      <div class="gold-market-stats">
-        <h4>시세</h4>
-        <dl>
-          <div><dt>시작</dt><dd>$2,352.70</dd></div>
-          <div><dt>거래량</dt><dd>38,409</dd></div>
-          <div><dt>1일 최저</dt><dd>$2,338.20</dd></div>
-          <div><dt>1일 최고</dt><dd>$2,361.40</dd></div>
-          <div><dt>1년 최저</dt><dd>$1,984.30</dd></div>
-          <div><dt>1년 최고</dt><dd>$2,448.80</dd></div>
-        </dl>
-      </div>
     </section>
   `;
 }
@@ -522,11 +610,96 @@ function renderDashboard() {
   renderMarketBoard();
 }
 
+function formatUsd(value, digits = 2) {
+  return `$${Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+function normalizeGoldMarketPrice(gold) {
+  const changePercent = Number(gold.changePercent || 0);
+  const price = Number(gold.price || 0);
+  const previousClose = Number(gold.previousClose || price);
+  const trend = changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'neutral';
+
+  return {
+    name: '국제 금값',
+    value: formatUsd(price),
+    change: `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%`,
+    trend,
+    details: [
+      gold.unit || '트로이온스',
+      gold.source ? `${gold.source} 기준` : 'XAU/USD 기준',
+      gold.isFallback ? '샘플 데이터' : '실시간',
+    ],
+    points: [
+      previousClose,
+      Number(gold.open || previousClose),
+      Number(gold.low || previousClose),
+      price,
+      Number(gold.high || price),
+      Number(gold.bid || price),
+      Number(gold.ask || price),
+    ],
+    marketStats: {
+      open: gold.open,
+      volume: gold.bid && gold.ask ? `${formatUsd(gold.bid)} / ${formatUsd(gold.ask)}` : '확인 중',
+      low: gold.low,
+      high: gold.high,
+      previousClose: gold.previousClose,
+      gram24k: gold.gram24k,
+      updatedAt: gold.updatedAt,
+      isFallback: gold.isFallback,
+    },
+  };
+}
+
+async function loadMetalPrices() {
+  try {
+    const response = await fetch('/api/metal-prices');
+    if (!response.ok) throw new Error('금값 API 응답 실패');
+    const data = await response.json();
+    const goldPrice = normalizeGoldMarketPrice(data.gold);
+    marketPrices[0] = goldPrice;
+    renderMarketBoard();
+  } catch (error) {
+    showToast('국제 금값 API 연결 전이라 샘플 시세를 표시합니다.');
+  }
+}
+
+function relativeTime(isoDate) {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const minutes = Math.max(1, Math.floor(diff / 60000));
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  return `${Math.floor(hours / 24)}일 전`;
+}
+
+function normalizeNewsItem(item, index = 0) {
+  return {
+    id: item.id || `news-${index}`,
+    titleKo: item.titleKo || item.title || item.titleOriginal,
+    titleOriginal: item.titleOriginal || item.original || item.title,
+    source: item.source || 'Unknown',
+    publishedAt: item.publishedAt || new Date().toISOString(),
+    url: item.url || '#',
+    tags: item.tags || [],
+    priority: item.priority || '일반',
+    impactScore: Number(item.impactScore || 0),
+    relatedAssets: item.relatedAssets || item.assets || [],
+    highlights: item.highlights || [],
+    summaryKo: item.summaryKo || item.summary || '요약이 준비 중입니다.',
+    duplicateCount: item.duplicateCount || 1,
+  };
+}
+
 function newsTemplate(item, index = 0) {
   return `
-    <button class="news-row ${index === state.selectedNews ? 'active' : ''}" data-news-index="${index}" type="button">
-      <span class="news-title">${item.title}</span>
-      <span class="meta">${item.source} · ${item.time}</span>
+    <button class="news-row ${item.id === state.selectedNewsId ? 'active' : ''}" data-news-id="${item.id}" type="button">
+      <span class="news-title">${item.titleKo}</span>
+      <span class="meta">${item.source} · ${relativeTime(item.publishedAt)} · ${item.priority} · 영향 ${item.impactScore}</span>
     </button>
   `;
 }
@@ -535,39 +708,190 @@ function renderNews() {
   document.querySelector('#newsList').innerHTML = newsItems.map(newsTemplate).join('');
 }
 
+function renderNewsDetail() {
+  const item = newsItems.find((news) => news.id === state.selectedNewsId) || newsItems[0];
+  if (!item) return;
+
+  document.querySelector('#newsDetailPanel').innerHTML = `
+    <div class="news-detail-stack">
+      <div class="news-priority-row">
+        <span class="tag">${item.priority}</span>
+        <span class="meta">${item.source} · ${relativeTime(item.publishedAt)} · 영향 ${item.impactScore}</span>
+      </div>
+      <h3>${item.titleKo}</h3>
+      <p class="news-original">${item.titleOriginal}</p>
+      <p>${item.summaryKo}</p>
+      <div class="news-tag-list">
+        ${item.tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}
+      </div>
+      <div class="news-detail-grid">
+        <div>
+          <span class="section-label">관련 자산</span>
+          <strong>${item.relatedAssets.join(', ') || '확인 중'}</strong>
+        </div>
+        <div>
+          <span class="section-label">중복 묶음</span>
+          <strong>${item.duplicateCount}건</strong>
+        </div>
+      </div>
+      <ul class="news-highlight-list">
+        ${item.highlights.map((highlight) => `<li>${highlight}</li>`).join('')}
+      </ul>
+      <button class="secondary-button news-source-button" id="newsSourceButton" type="button">원문 보기</button>
+    </div>
+  `;
+}
+
+async function loadNews() {
+  try {
+    const response = await fetch('/api/news');
+    if (!response.ok) throw new Error('뉴스 API 응답 실패');
+    const data = await response.json();
+    newsItems = (data.items || []).map(normalizeNewsItem);
+    state.selectedNewsId = newsItems[0]?.id || state.selectedNewsId;
+  } catch (error) {
+    newsItems = newsItems.map(normalizeNewsItem);
+    showToast('뉴스 API 연결 전이라 샘플 뉴스를 표시합니다.');
+  }
+
+  renderNews();
+}
+
 function postTemplate(item, index = 0) {
+  const isExpanded = state.expandedPostId === item.id;
+  const isLiked = state.likedPostIds.has(item.id);
   return `
-    <article class="post-row" data-post-index="${index}">
-      <div>
-        <span class="post-title">${item.title}</span>
-        <span class="post-meta">작성자: ${item.author} <span class="badge">${item.badge}</span> · ${item.time}</span>
+    <article class="post-row community-post ${isExpanded ? 'expanded' : ''}" data-post-id="${item.id}">
+      <div class="community-post-header">
+        <div class="post-avatar" aria-hidden="true">${avatarMarkup(item.avatar || 'G', item.avatarImage || '')}</div>
+        <div>
+          <span class="post-author">${item.author}</span>
+          <span class="post-meta">${item.time} · ${item.room} <span class="badge">${item.badge}</span></span>
+        </div>
       </div>
-      <p class="meta">${item.body}</p>
-      <div class="post-actions">
-        <button class="small-button" data-like-post="${index}" type="button">공감 ${item.likes}</button>
-        <button class="small-button" data-comment-post="${index}" type="button">댓글 ${item.comments}</button>
-        <button class="small-button" data-report-post="${index}" type="button">신고</button>
+      <p class="community-post-text">${item.title}</p>
+      ${isExpanded ? `<p class="meta">${item.body}</p>` : ''}
+      <div class="post-actions community-actions">
+        <button class="icon-action count-action ${isLiked ? 'active' : ''}" data-like-post="${item.id}" type="button" aria-label="공감 ${item.likes}"><span aria-hidden="true">♡</span><strong>${item.likes}</strong></button>
+        <button class="icon-action count-action" data-comment-post="${item.id}" type="button" aria-label="댓글 ${item.comments}"><span aria-hidden="true">◯</span><strong>${item.comments}</strong></button>
+        <button class="icon-action more-action" data-report-post="${item.id}" type="button" aria-label="더보기">…</button>
       </div>
+      ${isExpanded ? `
+        <div class="comment-panel">
+          <div class="comment-list">
+            ${item.commentItems.map((comment) => `
+              <article class="comment-row">
+                <span>${comment.author} · ${comment.time}</span>
+                <p>${comment.body}</p>
+                <button type="button" data-report-comment="${item.id}">신고</button>
+              </article>
+            `).join('')}
+          </div>
+          <form class="comment-form" data-comment-form="${item.id}">
+            <input name="comment" type="text" placeholder="의견을 입력하세요" autocomplete="off">
+            <button class="small-button" type="submit">등록</button>
+          </form>
+        </div>
+      ` : ''}
     </article>
   `;
 }
 
+function postById(postId) {
+  return posts.find((post) => post.id === Number(postId));
+}
+
+function requireCommunityProfile(actionName) {
+  if (!currentUser.isLoggedIn) {
+    showToast(`${actionName}하려면 회원가입 또는 로그인이 필요합니다.`);
+    return false;
+  }
+
+  if (!currentUser.nickname) {
+    showToast(`${actionName}하려면 닉네임 설정이 필요합니다.`);
+    return false;
+  }
+
+  return true;
+}
+
 function visiblePosts() {
-  return [...posts].sort((a, b) => {
+  return [...posts]
+    .sort((a, b) => {
     if (state.postSort === 'latest') return posts.indexOf(a) - posts.indexOf(b);
     return b.hot - a.hot;
   });
 }
 
+function renderPostRoomOptions() {
+  document.querySelector('#postRoom').innerHTML = rooms
+    .filter((room) => room.name !== '전체')
+    .map((room) => `<option value="${room.name}">${room.name}</option>`)
+    .join('');
+}
+
 function renderPosts() {
+  const nickname = document.querySelector('#communityNickname');
+  if (nickname) nickname.textContent = currentUser.nickname || '닉네임 설정 필요';
+  renderPostRoomOptions();
+  document.querySelector('#sortMenuLabel').textContent = state.postSort === 'latest' ? '최신순' : '인기순';
   document.querySelector('#postList').innerHTML = visiblePosts().map(postTemplate).join('');
+}
+
+function activityTemplate(item) {
+  return `
+    <article class="activity-row">
+      <span>${item.type} · ${item.time}</span>
+      <strong>${item.title}</strong>
+      <p>${item.body}</p>
+    </article>
+  `;
+}
+
+function renderProfile() {
+  renderAvatar(document.querySelector('#profileAvatar'), currentUser.avatar, currentUser.avatarImage);
+  document.querySelector('#profileNickname').textContent = currentUser.nickname;
+  renderAvatar(document.querySelector('#composerAvatar'), currentUser.avatar, currentUser.avatarImage);
+  renderAvatar(document.querySelector('#profileEditAvatarPreview'), currentUser.avatar, currentUser.avatarImage);
+  document.querySelector('#profileAvatarInput').value = '';
+  document.querySelector('#profileNicknameInput').value = currentUser.nickname;
+
+  const myPosts = posts
+    .flatMap((post, postIndex) => post.author === currentUser.nickname ? [{
+      type: '게시글',
+      time: post.time,
+      order: postIndex,
+      title: post.title,
+      body: `${post.room} · 공감 ${post.likes} · 댓글 ${post.comments}`,
+    }] : []);
+
+  const myComments = posts
+    .flatMap((post, postIndex) => post.commentItems
+      .filter((comment) => comment.author === currentUser.nickname)
+      .map((comment, commentIndex) => ({
+        type: '댓글',
+        time: comment.time,
+        order: postIndex + ((commentIndex + 1) / 100),
+        title: post.title,
+        body: comment.body,
+      })));
+
+  const activities = [...myPosts, ...myComments]
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 8);
+
+  document.querySelector('#profileActivityArchive').innerHTML = activities.length
+    ? activities.map(activityTemplate).join('')
+    : '<p class="empty-state">아직 작성한 활동이 없습니다.</p>';
 }
 
 function renderAll() {
   renderDashboard();
   renderIndicators();
+  newsItems = newsItems.map(normalizeNewsItem);
   renderNews();
   renderPosts();
+  renderProfile();
 }
 
 document.querySelectorAll('.nav-button').forEach((button) => {
@@ -579,49 +903,198 @@ document.querySelectorAll('[data-view-jump]').forEach((button) => {
 });
 
 document.body.addEventListener('click', (event) => {
-  const newsButton = event.target.closest('[data-news-index]');
+  const newsButton = event.target.closest('[data-news-id]');
   if (newsButton && state.view === 'news') {
-    showToast('뉴스 원문 연결은 실제 뉴스 피드 연동 단계에서 제공됩니다.');
+    state.selectedNewsId = newsButton.dataset.newsId;
+    renderNews();
+    renderNewsDetail();
+    setView('newsDetail');
   }
 
   const likeButton = event.target.closest('[data-like-post]');
   if (likeButton) {
-    const post = visiblePosts()[Number(likeButton.dataset.likePost)];
-    post.likes += 1;
-    post.hot += 3;
-    renderAll();
-    showToast('공감이 반영되었습니다.');
+    if (!requireCommunityProfile('공감')) return;
+    const post = postById(likeButton.dataset.likePost);
+    if (!post) return;
+    const isLiked = state.likedPostIds.has(post.id);
+    if (isLiked) {
+      state.likedPostIds.delete(post.id);
+      post.likes -= 1;
+      post.hot -= 3;
+    } else {
+      state.likedPostIds.add(post.id);
+      post.likes += 1;
+      post.hot += 3;
+    }
+    renderPosts();
+    showToast(isLiked ? '공감을 취소했습니다.' : '공감이 반영되었습니다.');
+  }
+
+  const postRow = event.target.closest('[data-post-id]');
+  if (postRow && !event.target.closest('button, input, form')) {
+    state.expandedPostId = Number(postRow.dataset.postId);
+    renderPosts();
   }
 
   const commentButton = event.target.closest('[data-comment-post]');
   if (commentButton) {
-    showToast('댓글 기능은 다음 단계에서 상세 입력으로 확장합니다.');
+    state.expandedPostId = Number(commentButton.dataset.commentPost);
+    renderPosts();
+    showToast('게시물 상세에서 댓글을 확인할 수 있습니다.');
+  }
+
+  const reportCommentButton = event.target.closest('[data-report-comment]');
+  if (reportCommentButton) {
+    showToast('댓글 신고가 접수되었습니다. 운영 검토 대상에 추가됩니다.');
   }
 
   const reportButton = event.target.closest('[data-report-post]');
   if (reportButton) {
+    if (!requireCommunityProfile('신고')) return;
     showToast('신고가 접수되었습니다. 운영 검토 대상에 추가됩니다.');
   }
 
+});
+
+document.body.addEventListener('submit', (event) => {
+  const commentForm = event.target.closest('[data-comment-form]');
+  if (commentForm) {
+    event.preventDefault();
+    if (!requireCommunityProfile('댓글 작성')) return;
+    const post = postById(commentForm.dataset.commentForm);
+    const input = commentForm.elements.comment;
+    const body = input.value.trim();
+
+    if (!body) {
+      showToast('댓글 내용을 입력해주세요.');
+      return;
+    }
+
+    post.commentItems.push({
+      author: currentUser.nickname,
+      time: '방금 전',
+      body,
+    });
+    post.comments += 1;
+    post.hot += 3;
+    input.value = '';
+    renderPosts();
+    renderProfile();
+    showToast('댓글이 등록되었습니다.');
+  }
 });
 
 document.querySelector('#pushToggle').addEventListener('change', (event) => {
   showToast(event.target.checked ? '중요 뉴스 푸시를 켰습니다.' : '중요 뉴스 푸시를 껐습니다.');
 });
 
-document.querySelectorAll('[data-post-sort]').forEach((button) => {
-  button.addEventListener('click', () => {
-    state.postSort = button.dataset.postSort;
-    document.querySelectorAll('[data-post-sort]').forEach((item) => item.classList.toggle('active', item === button));
-    renderPosts();
-  });
+document.querySelector('#newsBackButton').addEventListener('click', () => {
+  setView('news');
+});
+
+document.body.addEventListener('click', (event) => {
+  const sourceButton = event.target.closest('#newsSourceButton');
+  if (!sourceButton) return;
+  const item = newsItems.find((news) => news.id === state.selectedNewsId);
+  if (!item?.url || item.url === '#') {
+    showToast('뉴스 원문을 열 수 없습니다.');
+    return;
+  }
+  window.open(item.url, '_blank', 'noopener');
+});
+
+document.querySelector('#sortToggleButton').addEventListener('click', () => {
+  state.postSort = state.postSort === 'latest' ? 'hot' : 'latest';
+  state.expandedPostId = visiblePosts()[0]?.id || null;
+  renderPosts();
+  document.querySelector('#postList').scrollIntoView({ block: 'start' });
 });
 
 function openPostModal() {
+  if (!requireCommunityProfile('새 글 작성')) return;
+  const roomSelect = document.querySelector('#postRoom');
+  const defaultRoom = state.selectedRoom === '전체' ? '실시간 시황' : state.selectedRoom;
+  roomSelect.value = defaultRoom;
   document.querySelector('#postModal').showModal();
 }
 
 document.querySelector('#communityWriteButton').addEventListener('click', openPostModal);
+
+document.querySelector('#profileButton').addEventListener('click', () => {
+  renderProfile();
+  setView('profile');
+});
+
+document.querySelector('#profileBackButton').addEventListener('click', () => {
+  setView('community');
+});
+
+document.querySelector('#profileEditButton').addEventListener('click', () => {
+  renderProfile();
+  setView('profileEdit');
+});
+
+document.querySelector('#profileAvatarInput').addEventListener('change', (event) => {
+  const [file] = event.target.files;
+  if (!file) {
+    renderAvatar(document.querySelector('#profileEditAvatarPreview'), currentUser.avatar, currentUser.avatarImage);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    document.querySelector('#profileEditAvatarPreview').innerHTML = `<img src="${reader.result}" alt="">`;
+  });
+  reader.readAsDataURL(file);
+});
+
+document.querySelector('#profileEditCancelButton').addEventListener('click', () => {
+  renderProfile();
+  setView('profile');
+});
+
+document.querySelector('#profileEditForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const previousNickname = currentUser.nickname;
+  const nextNickname = document.querySelector('#profileNicknameInput').value.trim();
+  const [avatarFile] = document.querySelector('#profileAvatarInput').files;
+
+  if (!nextNickname) {
+    showToast('닉네임을 입력해주세요.');
+    return;
+  }
+
+  const saveProfile = (avatarImage = currentUser.avatarImage) => {
+    currentUser.avatarImage = avatarImage;
+    currentUser.nickname = nextNickname;
+
+    posts.forEach((post) => {
+      if (post.author === previousNickname) {
+        post.author = nextNickname;
+        post.avatar = currentUser.avatar;
+        post.avatarImage = avatarImage;
+      }
+
+      post.commentItems.forEach((comment) => {
+        if (comment.author === previousNickname) comment.author = nextNickname;
+      });
+    });
+
+    renderPosts();
+    renderProfile();
+    setView('profile');
+    showToast('프로필이 저장되었습니다.');
+  };
+
+  if (avatarFile) {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => saveProfile(reader.result));
+    reader.readAsDataURL(avatarFile);
+    return;
+  }
+
+  saveProfile();
+});
 
 document.querySelector('#postForm').addEventListener('submit', (event) => {
   if (event.submitter?.value === 'cancel') return;
@@ -629,6 +1102,7 @@ document.querySelector('#postForm').addEventListener('submit', (event) => {
 
   const title = document.querySelector('#postTitle').value.trim();
   const body = document.querySelector('#postBody').value.trim();
+  const room = document.querySelector('#postRoom').value;
 
   if (!title || !body) {
     showToast('제목과 본문을 입력해주세요.');
@@ -636,22 +1110,32 @@ document.querySelector('#postForm').addEventListener('submit', (event) => {
   }
 
   posts.unshift({
+    id: Date.now(),
     title,
     body,
-    room: '전체',
-    author: 'gold_user',
-    badge: '금 투자자',
+    room,
+    author: currentUser.nickname,
+    badge: currentUser.badge,
+    avatar: currentUser.avatar,
+    avatarImage: currentUser.avatarImage,
     time: '방금 전',
     comments: 0,
     likes: 0,
     hot: 20,
+    commentItems: [],
   });
 
   document.querySelector('#postForm').reset();
   document.querySelector('#postModal').close();
   setView('community');
-  renderAll();
+  state.postSort = 'latest';
+  state.expandedPostId = posts[0].id;
+  renderPosts();
+  renderProfile();
   showToast('게시글이 등록되었습니다.');
 });
 
 renderAll();
+loadIndicators();
+loadMetalPrices();
+loadNews();

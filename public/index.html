@@ -75,17 +75,78 @@
           </section>
         </section>
 
+        <section class="view" id="newsDetailView" aria-labelledby="newsDetailTitle">
+          <section class="depth-screen news-detail-screen">
+            <div class="depth-top">
+              <button class="depth-back-button" id="newsBackButton" type="button" aria-label="뉴스 목록으로 돌아가기">‹</button>
+              <h2 id="newsDetailTitle">뉴스 상세</h2>
+            </div>
+            <article class="panel news-detail-panel" id="newsDetailPanel"></article>
+          </section>
+        </section>
+
         <section class="view" id="communityView" aria-labelledby="communityTitle">
-          <div class="view-heading">
-            <h2 id="communityTitle" class="sr-only">금 투자자 커뮤니티</h2>
-            <button class="primary-button" id="communityWriteButton" type="button">새 글 작성</button>
-          </div>
+          <h2 id="communityTitle" class="sr-only">금 투자자 커뮤니티</h2>
           <section class="panel community-feed-panel">
-            <div class="community-sort" role="tablist" aria-label="게시글 정렬">
-              <button class="sort-button active" data-post-sort="latest" type="button">최신순</button>
-              <button class="sort-button" data-post-sort="hot" type="button">인기순</button>
+            <div class="community-feed-toolbar">
+              <button class="feed-sort-button active" id="sortToggleButton" type="button">
+                <span id="sortMenuLabel">최신순</span>
+                <span aria-hidden="true">↕</span>
+              </button>
+              <button class="feed-profile-button" id="profileButton" type="button">내 프로필</button>
             </div>
             <div class="post-list" id="postList"></div>
+            <div class="community-composer">
+              <div class="composer-avatar" id="composerAvatar" aria-hidden="true">金</div>
+              <button class="composer-input" id="communityWriteButton" type="button">무슨 생각을 하고 있나요?</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="profileView" aria-labelledby="profileTitle">
+          <section class="depth-screen profile-screen">
+            <div class="depth-top">
+              <button class="depth-back-button" id="profileBackButton" type="button" aria-label="커뮤니티로 돌아가기">‹</button>
+              <h2 id="profileTitle">마이페이지</h2>
+            </div>
+            <section class="panel profile-panel">
+              <div class="profile-card">
+                <div class="profile-avatar" id="profileAvatar" aria-hidden="true">金</div>
+                <div class="profile-main">
+                  <span class="section-label">내 프로필</span>
+                  <strong id="profileNickname">gold_user</strong>
+                  <p>커뮤니티에 글과 댓글을 남길 때 이 닉네임이 노출됩니다.</p>
+                </div>
+                <button class="secondary-button" id="profileEditButton" type="button">프로필 편집</button>
+              </div>
+              <div class="profile-activity">
+                <section aria-labelledby="profileActivityTitle">
+                  <h3 id="profileActivityTitle">최근 활동</h3>
+                  <div class="activity-list" id="profileActivityArchive"></div>
+                </section>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <section class="view" id="profileEditView" aria-labelledby="profileEditTitle">
+          <section class="depth-screen profile-edit-screen">
+            <div class="depth-top">
+              <button class="depth-back-button" id="profileEditCancelButton" type="button" aria-label="마이페이지로 돌아가기">‹</button>
+              <h2 id="profileEditTitle">프로필 편집</h2>
+            </div>
+            <form class="profile-edit-form" id="profileEditForm">
+              <label class="profile-image-picker" for="profileAvatarInput">
+                <span class="profile-avatar profile-edit-avatar" id="profileEditAvatarPreview" aria-hidden="true">金</span>
+                <span class="profile-image-edit" aria-hidden="true">✎</span>
+                <input class="profile-image-input" id="profileAvatarInput" type="file" accept="image/*">
+              </label>
+              <label class="profile-nickname-field">
+                <span>닉네임</span>
+                <input id="profileNicknameInput" type="text" maxlength="20" required>
+              </label>
+              <button class="primary-button profile-save-button" type="submit">저장</button>
+            </form>
           </section>
         </section>
       </main>
@@ -100,6 +161,10 @@
           </div>
           <button class="icon-button" value="cancel" type="submit" aria-label="닫기" title="닫기">×</button>
         </div>
+        <label>
+          토론방
+          <select id="postRoom" required></select>
+        </label>
         <label>
           제목
           <input id="postTitle" type="text" maxlength="80" required placeholder="제목을 입력하세요">
