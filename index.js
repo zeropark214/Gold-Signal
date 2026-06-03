@@ -27,6 +27,11 @@ function loadEnvFile(filePath = path.join(__dirname, '.env')) {
 
 loadEnvFile();
 
+function hasConfiguredEnv(name) {
+  const value = process.env[name];
+  return Boolean(value && value.trim() && !/^your_/i.test(value.trim()));
+}
+
 const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, 'public');
 const GOLD_API_BASE_URL = 'https://www.goldapi.io/api';
@@ -34,6 +39,10 @@ const GOLD_API_SYMBOL = process.env.GOLD_API_SYMBOL || 'XAU';
 const GOLD_API_CURRENCY = process.env.GOLD_API_CURRENCY || 'USD';
 const GOLD_API_DATE = process.env.GOLD_API_DATE || '';
 const FRED_API_BASE_URL = 'https://api.stlouisfed.org/fred/series/observations';
+const NEWS_API_BASE_URL = 'https://newsapi.org/v2/everything';
+const GNEWS_API_BASE_URL = 'https://gnews.io/api/v4/search';
+const NEWS_QUERY = process.env.NEWS_QUERY || '(("gold price" OR "spot gold" OR "gold futures" OR bullion OR "precious metals") AND ("Federal Reserve" OR inflation OR "Treasury yields" OR dollar OR rates OR "central bank"))';
+const NEWS_PAGE_SIZE = Number(process.env.NEWS_PAGE_SIZE || 10);
 
 const fallbackIndicators = {
   daily: [
@@ -282,6 +291,58 @@ const newsFeed = [
   },
 ];
 
+const newsSignals = [
+  {
+    pattern: /fed|federal reserve|fomc|rate cut|interest rate|powell/i,
+    tag: '금리',
+    asset: '미국 국채금리',
+    highlight: '연준·금리 전망 관련',
+    score: 24,
+  },
+  {
+    pattern: /treasury|yield|bond/i,
+    tag: '미국 국채금리',
+    asset: '10년물 금리',
+    highlight: '국채금리 변동 관련',
+    score: 18,
+  },
+  {
+    pattern: /dollar|greenback|dxy/i,
+    tag: '달러',
+    asset: 'DXY',
+    highlight: '달러 강약 관련',
+    score: 18,
+  },
+  {
+    pattern: /inflation|cpi|pce|prices/i,
+    tag: '인플레이션',
+    asset: 'CPI/PCE',
+    highlight: '물가 지표 관련',
+    score: 18,
+  },
+  {
+    pattern: /gold|bullion|xau|precious metal/i,
+    tag: '금',
+    asset: '국제 금',
+    highlight: '금 시장 직접 관련',
+    score: 22,
+  },
+  {
+    pattern: /oil|crude|energy/i,
+    tag: '유가',
+    asset: 'WTI',
+    highlight: '에너지 가격 관련',
+    score: 10,
+  },
+  {
+    pattern: /central bank|reserve bank|gold buying/i,
+    tag: '중앙은행 금 매입',
+    asset: '중앙은행 수요',
+    highlight: '중앙은행 수요 관련',
+    score: 16,
+  },
+];
+
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -339,8 +400,144 @@ function normalizeGoldApiResponse(data) {
   };
 }
 
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function scoreNewsItem(article) {
+  const text = [
+    article.title,
+    article.description,
+    article.content,
+  ].filter(Boolean).join(' ');
+
+  const matched = newsSignals.filter((signal) => signal.pattern.test(text));
+  const score = Math.min(98, 42 + matched.reduce((total, signal) => total + signal.score, 0));
+
+  return {
+    score,
+    tags: uniqueValues(matched.map((signal) => signal.tag)).slice(0, 4),
+    assets: uniqueValues(['국제 금', ...matched.map((signal) => signal.asset)]).slice(0, 4),
+    highlights: uniqueValues(matched.map((signal) => signal.highlight)).slice(0, 3),
+  };
+}
+
+function normalizeNewsArticle(article, index, provider) {
+  const sourceName = typeof article.source === 'string'
+    ? article.source
+    : article.source?.name;
+  const signal = scoreNewsItem(article);
+  const publishedAt = article.publishedAt || article.published_at || new Date().toISOString();
+  const title = article.title || '제목 확인 중';
+  const description = article.description || article.content || '원문에서 세부 내용을 확인할 수 있습니다.';
+
+  return {
+    id: `${provider}-${index}-${Buffer.from(title).toString('base64url').slice(0, 12)}`,
+    titleKo: title,
+    titleOriginal: title,
+    source: sourceName || provider,
+    publishedAt,
+    url: article.url || '#',
+    tags: signal.tags.length ? signal.tags : ['금 시장'],
+    priority: signal.score >= 82 ? '속보' : signal.score >= 68 ? '중요' : '일반',
+    impactScore: signal.score,
+    relatedAssets: signal.assets,
+    highlights: signal.highlights.length ? signal.highlights : ['금값 영향 요인 확인 필요'],
+    summaryKo: description,
+    clusterKey: `${provider}-${sourceName || 'source'}-${index}`,
+    duplicateCount: 1,
+  };
+}
+
+function relevantNewsItems(articles, provider) {
+  return articles
+    .map((article, index) => normalizeNewsArticle(article, index, provider))
+    .filter((item) => item.impactScore > 42)
+    .slice(0, NEWS_PAGE_SIZE);
+}
+
+async function getNewsFromNewsApi() {
+  const params = new URLSearchParams({
+    q: NEWS_QUERY,
+    searchIn: 'title,description',
+    language: 'en',
+    sortBy: 'publishedAt',
+    pageSize: String(Math.min(Math.max(NEWS_PAGE_SIZE, 1), 100)),
+    apiKey: process.env.NEWS_API_KEY,
+  });
+
+  const response = await fetch(`${NEWS_API_BASE_URL}?${params}`);
+  if (!response.ok) {
+    throw new Error(`NewsAPI failed with ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data.status === 'error') {
+    throw new Error(data.message || 'NewsAPI returned an error');
+  }
+
+  return {
+    provider: 'NewsAPI.org',
+    items: relevantNewsItems(data.articles || [], 'newsapi'),
+  };
+}
+
+async function getNewsFromGNews() {
+  const params = new URLSearchParams({
+    q: NEWS_QUERY,
+    lang: 'en',
+    country: 'us',
+    max: String(Math.min(Math.max(NEWS_PAGE_SIZE, 1), 10)),
+    apikey: process.env.GNEWS_API_KEY,
+  });
+
+  const response = await fetch(`${GNEWS_API_BASE_URL}?${params}`);
+  if (!response.ok) {
+    throw new Error(`GNews failed with ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data.errors) {
+    throw new Error(Array.isArray(data.errors) ? data.errors.join(', ') : JSON.stringify(data.errors));
+  }
+
+  return {
+    provider: 'GNews',
+    items: relevantNewsItems(data.articles || [], 'gnews'),
+  };
+}
+
+async function getNews() {
+  try {
+    const news = hasConfiguredEnv('NEWS_API_KEY')
+      ? await getNewsFromNewsApi()
+      : hasConfiguredEnv('GNEWS_API_KEY')
+        ? await getNewsFromGNews()
+        : null;
+
+    if (news) {
+      return news.items.length ? news : {
+        provider: news.provider,
+        error: 'No relevant gold market news found for the current query',
+        items: newsFeed,
+      };
+    }
+
+    return {
+      provider: 'sample',
+      items: newsFeed,
+    };
+  } catch (error) {
+    return {
+      provider: 'sample',
+      error: error.message,
+      items: newsFeed,
+    };
+  }
+}
+
 async function getGoldPrice() {
-  if (!process.env.GOLD_API_KEY) {
+  if (!hasConfiguredEnv('GOLD_API_KEY')) {
     return fallbackGoldPrice;
   }
 
@@ -384,7 +581,7 @@ function validFredObservations(observations = []) {
 }
 
 async function getFredSeries(seriesId, limit = 14) {
-  if (!process.env.FRED_API_KEY) return [];
+  if (!hasConfiguredEnv('FRED_API_KEY')) return [];
 
   const params = new URLSearchParams({
     series_id: seriesId,
@@ -486,7 +683,7 @@ function monthlyYoyIndicator(name, series, summary, related) {
 }
 
 async function getIndicators() {
-  if (!process.env.FRED_API_KEY) {
+  if (!hasConfiguredEnv('FRED_API_KEY')) {
     return {
       provider: 'sample',
       ...fallbackIndicators,
@@ -607,7 +804,7 @@ async function getIndicators() {
   }
 }
 
-const server = http.createServer((req, res) => {
+function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === '/api/health') {
@@ -617,17 +814,17 @@ const server = http.createServer((req, res) => {
       port,
       services: {
         goldApi: {
-          configured: Boolean(process.env.GOLD_API_KEY),
-          provider: process.env.GOLD_API_KEY ? 'GoldAPI.io' : 'sample',
+          configured: hasConfiguredEnv('GOLD_API_KEY'),
+          provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : 'sample',
           symbol: `${GOLD_API_SYMBOL}/${GOLD_API_CURRENCY}`,
         },
         fred: {
-          configured: Boolean(process.env.FRED_API_KEY),
-          provider: process.env.FRED_API_KEY ? 'FRED' : 'sample',
+          configured: hasConfiguredEnv('FRED_API_KEY'),
+          provider: hasConfiguredEnv('FRED_API_KEY') ? 'FRED' : 'sample',
         },
         news: {
-          configured: false,
-          provider: 'sample',
+          configured: hasConfiguredEnv('NEWS_API_KEY') || hasConfiguredEnv('GNEWS_API_KEY'),
+          provider: hasConfiguredEnv('NEWS_API_KEY') ? 'NewsAPI.org' : hasConfiguredEnv('GNEWS_API_KEY') ? 'GNews' : 'sample',
         },
       },
     });
@@ -635,9 +832,12 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/api/news') {
-    sendJson(res, {
-      updatedAt: new Date().toISOString(),
-      items: newsFeed,
+    getNews().then((news) => {
+      sendJson(res, {
+        updatedAt: new Date().toISOString(),
+        query: NEWS_QUERY,
+        ...news,
+      });
     });
     return;
   }
@@ -646,7 +846,7 @@ const server = http.createServer((req, res) => {
     getGoldPrice().then((gold) => {
       sendJson(res, {
         updatedAt: new Date().toISOString(),
-        provider: process.env.GOLD_API_KEY ? 'GoldAPI.io' : 'sample',
+        provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : 'sample',
         endpoint: `${GOLD_API_BASE_URL}/:symbol/:currency/:date?`,
         gold,
       });
@@ -682,8 +882,14 @@ const server = http.createServer((req, res) => {
 
     sendFile(res, path.join(publicDir, 'index.html'));
   });
-});
+}
 
-server.listen(port, () => {
-  console.log(`Gold Signal is running at http://localhost:${port}`);
-});
+const server = http.createServer(handleRequest);
+
+if (require.main === module) {
+  server.listen(port, () => {
+    console.log(`Gold Signal is running at http://localhost:${port}`);
+  });
+}
+
+module.exports = handleRequest;
