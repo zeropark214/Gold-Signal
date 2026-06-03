@@ -41,65 +41,24 @@
 
         <section class="view active" id="dashboardView" aria-labelledby="dashboardTitle">
           <h2 id="dashboardTitle" class="sr-only">대시보드</h2>
-          <section class="panel home-index-panel">
-            <div class="panel-header">
-              <div>
-                <span class="section-label">금속 시세</span>
-                <h3>실시간 금·은 가격</h3>
-              </div>
-            </div>
+          <section class="panel home-index-panel market-price-panel">
+            <div class="gold-detail-card" id="goldDetailCard"></div>
             <div class="home-index-list" id="marketBoard"></div>
           </section>
 
-          <section class="panel home-index-panel">
-            <div class="panel-header">
-              <div>
-                <span class="section-label">주요 지표</span>
-                <h3>금값에 영향 주는 지표</h3>
-              </div>
-              <button class="text-button" data-view-jump="indicators" type="button">전체 보기</button>
-            </div>
-            <div class="home-index-list" id="homeIndexList"></div>
-          </section>
-
-          <div class="content-grid">
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <span class="section-label">속보 뉴스</span>
-                  <h3>실시간 속보</h3>
-                </div>
-                <button class="text-button" data-view-jump="news" type="button">뉴스 보기</button>
-              </div>
-              <div class="news-list compact" id="dashboardNews"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <span class="section-label">커뮤니티</span>
-                  <h3>인기 토론</h3>
-                </div>
-                <button class="text-button" data-view-jump="community" type="button">참여하기</button>
-              </div>
-              <div class="post-list compact" id="dashboardPosts"></div>
-            </section>
-          </div>
         </section>
 
         <section class="view" id="indicatorsView" aria-labelledby="indicatorsTitle">
-          <div class="view-heading">
-            <h2 id="indicatorsTitle" class="sr-only">경제 지표</h2>
-            <div class="segmented" role="tablist" aria-label="지표 주기">
-              <button class="segment active" data-indicator-group="daily" type="button">매일</button>
-              <button class="segment" data-indicator-group="monthly" type="button">매월</button>
-            </div>
-          </div>
-          <div class="indicator-detail-layout">
-            <div class="panel">
-              <div class="indicator-list large" id="indicatorList"></div>
-            </div>
-            <aside class="panel detail-panel" id="indicatorDetail"></aside>
+          <h2 id="indicatorsTitle" class="sr-only">경제 지표</h2>
+          <div class="indicator-page-list">
+            <section class="panel home-index-panel market-price-panel indicator-group-panel" aria-labelledby="dailyIndicatorTitle">
+              <h3 class="indicator-group-title" id="dailyIndicatorTitle">매일 봐야 할 지표</h3>
+              <div class="home-index-list" id="dailyIndicatorList"></div>
+            </section>
+            <section class="panel home-index-panel market-price-panel indicator-group-panel" aria-labelledby="monthlyIndicatorTitle">
+              <h3 class="indicator-group-title" id="monthlyIndicatorTitle">매월 봐야 할 지표</h3>
+              <div class="home-index-list" id="monthlyIndicatorList"></div>
+            </section>
           </div>
         </section>
 

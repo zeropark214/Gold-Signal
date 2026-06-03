@@ -325,8 +325,6 @@ let posts = [
 
 const state = {
   view: 'dashboard',
-  indicatorGroup: 'daily',
-  selectedIndicator: 0,
   newsFilter: '전체',
   selectedNews: 0,
   postSort: 'latest',
@@ -376,42 +374,36 @@ function setView(view) {
   });
 }
 
-function renderIndicatorRows(container, indicators, compact = false) {
+function renderIndicatorRows(container, indicators) {
   container.innerHTML = indicators
-    .map((item, index) => `
-      <button class="indicator-row ${!compact && index === state.selectedIndicator ? 'active' : ''}" data-indicator-index="${index}" type="button">
-        <span>
-          <strong class="indicator-title">${index + 1}. ${item.name}</strong>
-          <span class="meta">${item.value} · ${item.compare} · ${item.change}</span>
-        </span>
-        <span class="${impactClass(item.impact)}">${impactText(item.impact)}</span>
-      </button>
-    `)
+    .map((item, index) => {
+      const trend = item.impact === 'up' ? 'up' : item.impact === 'down' ? 'down' : 'neutral';
+      const points = trend === 'up'
+        ? [34, 38, 36, 43, 41, 48, 53]
+        : trend === 'down'
+          ? [53, 49, 51, 44, 42, 38, 34]
+          : [42, 40, 43, 41, 42, 40, 42];
+
+      return `
+      <article class="home-index-row trend-${trend}">
+        <div class="mini-chart">${sparkline(points)}</div>
+        <div class="home-index-main">
+          <strong>${index + 1}. ${item.name}</strong>
+          <div>
+            <span>${item.value}</span>
+            <em class="${item.impact === 'up' ? 'index-up' : item.impact === 'down' ? 'index-down' : ''}">${impactText(item.impact)}</em>
+          </div>
+          <p><span>${item.compare}</span><span>${item.change}</span></p>
+        </div>
+      </article>
+    `;
+    })
     .join('');
 }
 
-function renderIndicatorDetail() {
-  const indicators = state.indicatorGroup === 'daily' ? dailyIndicators : monthlyIndicators;
-  const item = indicators[state.selectedIndicator] || indicators[0];
-  document.querySelector('#indicatorDetail').innerHTML = `
-    <span class="section-label">${state.indicatorGroup === 'daily' ? '매일 봐야 할 것' : '매월 봐야 할 것'} / 우선순위 ${state.selectedIndicator + 1}</span>
-    <h3>${item.name}</h3>
-    <div class="detail-metric">
-      <div class="metric-box"><span>최신</span><strong>${item.value}</strong></div>
-      <div class="metric-box"><span>비교</span><strong>${item.compare}</strong></div>
-      <div class="metric-box"><span>변화</span><strong>${item.change}</strong></div>
-    </div>
-    <p>${item.summary}</p>
-    <div class="news-tags">
-      ${item.related.split(', ').map((tag) => `<span class="tag">${tag}</span>`).join('')}
-    </div>
-  `;
-}
-
 function renderIndicators() {
-  const indicators = state.indicatorGroup === 'daily' ? dailyIndicators : monthlyIndicators;
-  renderIndicatorRows(document.querySelector('#indicatorList'), indicators);
-  renderIndicatorDetail();
+  renderIndicatorRows(document.querySelector('#dailyIndicatorList'), dailyIndicators);
+  renderIndicatorRows(document.querySelector('#monthlyIndicatorList'), monthlyIndicators);
 }
 
 function sparkline(points) {
@@ -452,35 +444,82 @@ function marketPriceTemplate(item) {
   `;
 }
 
-function renderMarketBoard() {
-  document.querySelector('#marketBoard').innerHTML = marketPrices.map(marketPriceTemplate).join('');
-}
+function candleChart() {
+  const candles = [
+    [20, 62, 74, 108, 'down'], [28, 68, 80, 116, 'down'], [36, 72, 84, 121, 'down'],
+    [44, 78, 92, 150, 'down'], [52, 98, 146, 172, 'down'], [60, 134, 176, 190, 'down'],
+    [68, 144, 166, 204, 'up'], [76, 126, 154, 186, 'up'], [84, 106, 136, 176, 'up'],
+    [92, 76, 126, 168, 'up'], [100, 44, 86, 158, 'up'], [108, 52, 102, 152, 'down'],
+    [116, 102, 142, 178, 'down'], [124, 138, 166, 198, 'down'], [132, 150, 184, 210, 'down'],
+    [144, 128, 164, 184, 'up'], [152, 118, 148, 176, 'up'], [160, 106, 136, 170, 'down'],
+    [168, 98, 126, 160, 'up'], [176, 102, 130, 156, 'down'], [184, 92, 124, 150, 'up'],
+    [192, 120, 176, 190, 'down'], [200, 170, 196, 210, 'down'], [208, 176, 206, 224, 'down'],
+    [216, 184, 214, 230, 'up'], [224, 162, 194, 220, 'up'], [232, 176, 218, 236, 'down'],
+    [240, 208, 232, 248, 'down'], [248, 196, 226, 242, 'up'],
+  ];
+  const volume = [8, 13, 18, 24, 29, 18, 11, 14, 46, 22, 17, 12, 10, 9, 12, 18, 13, 15, 24, 28, 21, 20, 19, 24, 23, 26, 29, 31, 28];
 
-function homeIndexTemplate(item) {
   return `
-    <article class="home-index-row ${item.trend === 'up' ? 'trend-up' : 'trend-down'}">
-      <div class="mini-chart">${sparkline(item.points)}</div>
-      <div class="home-index-main">
-        <strong>${item.name}</strong>
-        <div>
-          <span class="${item.trend === 'up' ? 'index-up' : 'index-down'}">${item.value}</span>
-          <em class="${item.trend === 'up' ? 'index-up' : 'index-down'}">${item.change}</em>
-        </div>
-        <p>${item.details.map((detail) => `<span>${detail}</span>`).join('')}</p>
-      </div>
-    </article>
+    <svg class="gold-candle-chart" viewBox="0 0 340 280" aria-hidden="true" focusable="false">
+      <line class="gold-chart-guide" x1="20" y1="64" x2="320" y2="64" />
+      <text class="gold-chart-label" x="52" y="42">최고 4,525.1</text>
+      <circle class="gold-chart-dot" cx="70" cy="55" r="4" />
+      <text class="gold-chart-label" x="166" y="240">최저 4,478.8</text>
+      <circle class="gold-chart-dot" cx="178" cy="226" r="4" />
+      ${candles.map(([x, high, open, close, trend]) => `
+        <line class="candle-wick" x1="${x}" y1="${high}" x2="${x}" y2="${close + 20}" />
+        <rect class="candle-body candle-${trend}" x="${x - 2}" y="${Math.min(open, close)}" width="5" height="${Math.max(6, Math.abs(close - open))}" rx="1" />
+      `).join('')}
+      ${volume.map((height, index) => `<rect class="volume-bar" x="${20 + index * 8}" y="${264 - height}" width="4" height="${height}" rx="1" />`).join('')}
+    </svg>
   `;
 }
 
-function renderHomeIndices() {
-  document.querySelector('#homeIndexList').innerHTML = homeIndices.map(homeIndexTemplate).join('');
+function renderGoldDetail(item) {
+  document.querySelector('#goldDetailCard').innerHTML = `
+    <section class="gold-detail" aria-label="국제 금값 상세">
+      <div class="gold-summary">
+        <div class="gold-heading-stack">
+          <span class="section-label">상세 시세</span>
+          <h4>${item.name}</h4>
+          <div class="gold-price-stack">
+            <strong>${item.value}</strong>
+            <p>전일 대비 <em>${item.change}</em> · ${item.details.join(' · ')}</p>
+          </div>
+        </div>
+      </div>
+      ${candleChart()}
+      <div class="gold-range-tabs" aria-label="차트 기간">
+        <button class="active" type="button">1일</button>
+        <button type="button">1주</button>
+        <button type="button">3달</button>
+        <button type="button">1년</button>
+        <button type="button">5년</button>
+        <button class="range-chart-icon" type="button" aria-label="차트 보기"></button>
+      </div>
+      <div class="gold-market-stats">
+        <h4>시세</h4>
+        <dl>
+          <div><dt>시작</dt><dd>$2,352.70</dd></div>
+          <div><dt>거래량</dt><dd>38,409</dd></div>
+          <div><dt>1일 최저</dt><dd>$2,338.20</dd></div>
+          <div><dt>1일 최고</dt><dd>$2,361.40</dd></div>
+          <div><dt>1년 최저</dt><dd>$1,984.30</dd></div>
+          <div><dt>1년 최고</dt><dd>$2,448.80</dd></div>
+        </dl>
+      </div>
+    </section>
+  `;
+}
+
+function renderMarketBoard() {
+  const [goldPrice, ...otherPrices] = marketPrices;
+  renderGoldDetail(goldPrice);
+  document.querySelector('#marketBoard').innerHTML = otherPrices.map(marketPriceTemplate).join('');
 }
 
 function renderDashboard() {
   renderMarketBoard();
-  renderHomeIndices();
-  document.querySelector('#dashboardNews').innerHTML = newsItems.slice(0, 3).map(newsTemplate).join('');
-  document.querySelector('#dashboardPosts').innerHTML = posts.slice(0, 3).map(postTemplate).join('');
 }
 
 function newsTemplate(item, index = 0) {
@@ -539,22 +578,7 @@ document.querySelectorAll('[data-view-jump]').forEach((button) => {
   button.addEventListener('click', () => setView(button.dataset.viewJump));
 });
 
-document.querySelectorAll('[data-indicator-group]').forEach((button) => {
-  button.addEventListener('click', () => {
-    state.indicatorGroup = button.dataset.indicatorGroup;
-    state.selectedIndicator = 0;
-    document.querySelectorAll('[data-indicator-group]').forEach((item) => item.classList.toggle('active', item === button));
-    renderIndicators();
-  });
-});
-
 document.body.addEventListener('click', (event) => {
-  const indicatorButton = event.target.closest('[data-indicator-index]');
-  if (indicatorButton && state.view === 'indicators') {
-    state.selectedIndicator = Number(indicatorButton.dataset.indicatorIndex);
-    renderIndicators();
-  }
-
   const newsButton = event.target.closest('[data-news-index]');
   if (newsButton && state.view === 'news') {
     showToast('뉴스 원문 연결은 실제 뉴스 피드 연동 단계에서 제공됩니다.');
