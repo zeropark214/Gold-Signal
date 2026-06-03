@@ -41,8 +41,9 @@ const GOLD_API_DATE = process.env.GOLD_API_DATE || '';
 const FRED_API_BASE_URL = 'https://api.stlouisfed.org/fred/series/observations';
 const NEWS_API_BASE_URL = 'https://newsapi.org/v2/everything';
 const GNEWS_API_BASE_URL = 'https://gnews.io/api/v4/search';
-const NEWS_QUERY = process.env.NEWS_QUERY || '(("gold price" OR "spot gold" OR "gold futures" OR bullion OR "precious metals") AND ("Federal Reserve" OR inflation OR "Treasury yields" OR dollar OR rates OR "central bank"))';
+const NEWS_QUERY = process.env.NEWS_QUERY || '(gold OR bullion OR "Federal Reserve" OR FOMC OR Powell OR "Kevin Warsh" OR "interest rates" OR "rate cut" OR PCE OR CPI OR inflation OR "Treasury yields" OR "US dollar" OR "dollar index" OR DXY OR Trump OR tariff OR sanctions OR Iran OR Israel OR Gaza OR "Middle East")';
 const NEWS_PAGE_SIZE = Number(process.env.NEWS_PAGE_SIZE || 10);
+const NEWS_MIN_SCORE = Number(process.env.NEWS_MIN_SCORE || 60);
 
 const fallbackIndicators = {
   daily: [
@@ -293,11 +294,25 @@ const newsFeed = [
 
 const newsSignals = [
   {
-    pattern: /fed|federal reserve|fomc|rate cut|interest rate|powell/i,
+    pattern: /\bfed\b|federal reserve|fomc|powell|fed chair|federal open market committee/i,
     tag: '금리',
     asset: '미국 국채금리',
-    highlight: '연준·금리 전망 관련',
-    score: 24,
+    highlight: 'FOMC·연준 정책 관련',
+    score: 28,
+  },
+  {
+    pattern: /kevin warsh|warsh/i,
+    tag: '연준 인사',
+    asset: '금리 전망',
+    highlight: '케빈 워시·연준 인선 관련',
+    score: 26,
+  },
+  {
+    pattern: /interest rate|rate cut|rate hike|higher for longer|monetary policy|fed funds/i,
+    tag: '금리',
+    asset: '미국 국채금리',
+    highlight: '금리 경로 관련',
+    score: 26,
   },
   {
     pattern: /treasury|yield|bond/i,
@@ -307,25 +322,60 @@ const newsSignals = [
     score: 18,
   },
   {
-    pattern: /dollar|greenback|dxy/i,
+    pattern: /u\.?s\.? dollar|us dollar|dollar index|greenback|dxy/i,
     tag: '달러',
     asset: 'DXY',
     highlight: '달러 강약 관련',
-    score: 18,
+    score: 20,
   },
   {
-    pattern: /inflation|cpi|pce|prices/i,
+    pattern: /inflation|consumer price|price index|prices/i,
     tag: '인플레이션',
     asset: 'CPI/PCE',
     highlight: '물가 지표 관련',
-    score: 18,
+    score: 20,
   },
   {
-    pattern: /gold|bullion|xau|precious metal/i,
+    pattern: /\bpce\b|personal consumption expenditures/i,
+    tag: 'PCE',
+    asset: 'PCE',
+    highlight: 'PCE 물가 지표 관련',
+    score: 26,
+  },
+  {
+    pattern: /\bcpi\b|consumer price index/i,
+    tag: 'CPI',
+    asset: 'CPI',
+    highlight: 'CPI 물가 지표 관련',
+    score: 24,
+  },
+  {
+    pattern: /gold price|spot gold|gold futures|gold market|gold demand|bullion|\bxau\b|precious metal/i,
     tag: '금',
     asset: '국제 금',
     highlight: '금 시장 직접 관련',
     score: 22,
+  },
+  {
+    pattern: /(trump|tariff|trade war|trade policy|import duty).*(tariff|federal reserve|powell|warsh|rate|dollar|inflation|iran|israel|middle east|sanction)|(tariff|federal reserve|powell|warsh|rate|dollar|inflation|iran|israel|middle east|sanction).*trump/i,
+    tag: '트럼프·관세',
+    asset: '달러/인플레이션',
+    highlight: '트럼프 정책·관세 리스크 관련',
+    score: 24,
+  },
+  {
+    pattern: /geopolitical risk|safe haven|risk-off|war|conflict|sanction|ceasefire|missile|attack|invasion/i,
+    tag: '지정학 리스크',
+    asset: '안전자산 수요',
+    highlight: '지정학·안전자산 수요 관련',
+    score: 24,
+  },
+  {
+    pattern: /(middle east|iran|israel|gaza|red sea|houthi|strait of hormuz).*(war|conflict|attack|ceasefire|sanction|oil|safe haven|geopolitical)|(war|conflict|attack|ceasefire|sanction|oil|safe haven|geopolitical).*(middle east|iran|israel|gaza|red sea|houthi|strait of hormuz)/i,
+    tag: '중동 리스크',
+    asset: '안전자산 수요',
+    highlight: '중동 전쟁·긴장 관련',
+    score: 28,
   },
   {
     pattern: /oil|crude|energy/i,
@@ -412,6 +462,34 @@ function scoreNewsItem(article) {
   ].filter(Boolean).join(' ');
 
   const matched = newsSignals.filter((signal) => signal.pattern.test(text));
+  const matchedTags = matched.map((signal) => signal.tag);
+  const hasGoldMarketContext = matchedTags.includes('금');
+  const hasMacroContext = matchedTags.some((tag) => ['금리', '연준 인사', '미국 국채금리', '달러', '인플레이션', 'PCE', 'CPI', '유가', '중앙은행 금 매입'].includes(tag));
+  const hasGeopoliticalContext = matchedTags.some((tag) => ['지정학 리스크', '중동 리스크'].includes(tag))
+    && /(iran|israel|gaza|middle east|red sea|houthi|tehran|russia|russian|ukraine|oil|sanction)/i.test(text)
+    && /(war|conflict|ceasefire|sanction|oil|safe haven|geopolitical|missile|attack|nuclear|negotiation)/i.test(text);
+  const hasTrumpMarketContext = matchedTags.includes('트럼프·관세')
+    && /(tariff|federal reserve|powell|warsh|\brate\b|rates|dollar|inflation|iran|israel|middle east|sanction|oil|fed\b)/i.test(text);
+  const hasExcludedDomesticContext = /(homelessness|housing first|commercial driver|driver's seat|ai model|artificial intelligence|intelligence role|correspondents' dinner|olympic gold|soccer|watch collection|primary election|primaries)/i.test(text);
+
+  if (hasExcludedDomesticContext && !hasGoldMarketContext && !hasMacroContext && !hasGeopoliticalContext) {
+    return {
+      score: 0,
+      tags: [],
+      assets: [],
+      highlights: [],
+    };
+  }
+
+  if (!hasGoldMarketContext && !hasMacroContext && !hasGeopoliticalContext && !hasTrumpMarketContext) {
+    return {
+      score: 0,
+      tags: [],
+      assets: [],
+      highlights: [],
+    };
+  }
+
   const score = Math.min(98, 42 + matched.reduce((total, signal) => total + signal.score, 0));
 
   return {
@@ -452,7 +530,7 @@ function normalizeNewsArticle(article, index, provider) {
 function relevantNewsItems(articles, provider) {
   return articles
     .map((article, index) => normalizeNewsArticle(article, index, provider))
-    .filter((item) => item.impactScore > 42)
+    .filter((item) => item.impactScore >= NEWS_MIN_SCORE)
     .slice(0, NEWS_PAGE_SIZE);
 }
 
@@ -462,7 +540,7 @@ async function getNewsFromNewsApi() {
     searchIn: 'title,description',
     language: 'en',
     sortBy: 'publishedAt',
-    pageSize: String(Math.min(Math.max(NEWS_PAGE_SIZE, 1), 100)),
+    pageSize: String(Math.min(Math.max(NEWS_PAGE_SIZE * 4, 20), 100)),
     apiKey: process.env.NEWS_API_KEY,
   });
 
