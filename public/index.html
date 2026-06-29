@@ -48,18 +48,43 @@
 
         </section>
 
+        <section class="view" id="marketDetailView" aria-labelledby="marketDetailTitle">
+          <section class="depth-screen market-detail-screen">
+            <div class="depth-top">
+              <button class="depth-back-button" id="marketDetailBackButton" type="button" aria-label="홈으로 돌아가기">‹</button>
+              <h2 id="marketDetailTitle">시세 상세</h2>
+            </div>
+            <article class="market-detail-content" id="marketDetailContent"></article>
+          </section>
+        </section>
+
         <section class="view" id="indicatorsView" aria-labelledby="indicatorsTitle">
           <h2 id="indicatorsTitle" class="sr-only">경제 지표</h2>
+          <div class="indicator-toolbar">
+            <div class="indicator-tabs" role="tablist" aria-label="지표 종류">
+              <button class="active" id="dailyIndicatorTab" data-indicator-type="daily" type="button" role="tab" aria-selected="true">매일 확인</button>
+              <button id="monthlyIndicatorTab" data-indicator-type="monthly" type="button" role="tab" aria-selected="false">주요 발표</button>
+            </div>
+          </div>
           <div class="indicator-page-list">
-            <section class="panel home-index-panel market-price-panel indicator-group-panel" aria-labelledby="dailyIndicatorTitle">
-              <h3 class="indicator-group-title" id="dailyIndicatorTitle">매일 봐야 할 지표</h3>
-              <div class="home-index-list" id="dailyIndicatorList"></div>
+            <section class="panel indicator-group-panel" id="dailyIndicatorPanel" role="tabpanel" aria-labelledby="dailyIndicatorTab">
+              <div class="indicator-feed-list" id="dailyIndicatorList"></div>
             </section>
-            <section class="panel home-index-panel market-price-panel indicator-group-panel" aria-labelledby="monthlyIndicatorTitle">
-              <h3 class="indicator-group-title" id="monthlyIndicatorTitle">매월 봐야 할 지표</h3>
-              <div class="home-index-list" id="monthlyIndicatorList"></div>
+            <section class="panel indicator-group-panel" id="monthlyIndicatorPanel" role="tabpanel" aria-labelledby="monthlyIndicatorTab" hidden>
+              <div class="indicator-feed-list" id="monthlyIndicatorList"></div>
             </section>
           </div>
+          <p class="indicator-data-meta" id="indicatorDataMeta">샘플 데이터 · 업데이트 확인 중</p>
+        </section>
+
+        <section class="view" id="indicatorDetailView" aria-labelledby="indicatorDetailTitle">
+          <section class="depth-screen indicator-detail-screen">
+            <div class="depth-top">
+              <button class="depth-back-button" id="indicatorDetailBackButton" type="button" aria-label="지표 목록으로 돌아가기">‹</button>
+              <h2 id="indicatorDetailTitle">지표 상세</h2>
+            </div>
+            <article class="indicator-detail-content" id="indicatorDetailContent"></article>
+          </section>
         </section>
 
         <section class="view" id="newsView" aria-labelledby="newsTitle">

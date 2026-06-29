@@ -71,39 +71,51 @@ const marketPrices = [
     change: '-0.42%',
     trend: 'down',
     details: ['트로이온스', '런던 현물 기준'],
-    points: [2372, 2366, 2368, 2359, 2351, 2346, 2342],
+    points: [2352.64, 2348.2, 2342.8],
+    marketStats: {
+      updatedAt: new Date().toISOString(),
+      isFallback: true,
+    },
+  },
+  {
+    name: '국내 금값',
+    value: '103,840원/g',
+    change: '+0.31%',
+    trend: 'up',
+    details: ['KRX 금시장 기준', '1g당 가격'],
+    points: [102980, 103120, 103040, 103320, 103510, 103620, 103840],
+  },
+  {
+    name: '국내 금 가격 수준',
+    value: '2.8% 비쌈',
+    change: '+0.2%p',
+    trend: 'up',
+    details: ['국제 환산 가격보다 비쌉니다', '가격 차이 확대'],
+    points: [2.1, 2.2, 2.3, 2.1, 2.5, 2.6, 2.8],
   },
   {
     name: '국제 은값',
     value: '$31.18',
     change: '+0.76%',
     trend: 'up',
-    details: ['트로이온스', '런던 현물 기준'],
+    details: ['국제 은선물 기준', '트로이온스당'],
     points: [30.48, 30.62, 30.71, 30.86, 30.94, 31.02, 31.18],
   },
   {
-    name: '국내 금값',
-    value: '103,840원',
-    change: '+0.31%',
-    trend: 'up',
-    details: ['g당', '국내 소매 기준'],
-    points: [102980, 103120, 103040, 103320, 103510, 103620, 103840],
-  },
-  {
     name: '국내 은값',
-    value: '1,382원',
+    value: '1,382원/g',
     change: '+0.54%',
     trend: 'up',
-    details: ['g당', '국내 소매 기준'],
+    details: ['국내 은 소매 기준', '1g당 가격'],
     points: [1360, 1364, 1368, 1373, 1371, 1378, 1382],
   },
   {
-    name: '김치프리미엄',
-    value: '+2.8%',
-    change: '+0.2%p',
-    trend: 'up',
-    details: ['국내-국제 환산가', '국내 금 기준'],
-    points: [2.1, 2.2, 2.3, 2.1, 2.5, 2.6, 2.8],
+    name: '국내 은 가격 수준',
+    value: '1.6% 비쌈',
+    change: '-0.1%p',
+    trend: 'down',
+    details: ['국제 환산 가격보다 비쌉니다', '가격 차이 축소'],
+    points: [2.0, 1.9, 1.8, 1.9, 1.7, 1.7, 1.6],
   },
 ];
 
@@ -397,11 +409,22 @@ const state = {
   selectedRoom: '전체',
   expandedPostId: posts[0].id,
   likedPostIds: new Set(),
+  selectedMarketIndex: 0,
+  marketRange: 'day',
+  indicatorType: 'daily',
+  selectedIndicatorIndex: 0,
+};
+
+let indicatorMeta = {
+  provider: 'sample',
+  updatedAt: null,
 };
 
 const views = {
   dashboard: document.querySelector('#dashboardView'),
+  marketDetail: document.querySelector('#marketDetailView'),
   indicators: document.querySelector('#indicatorsView'),
+  indicatorDetail: document.querySelector('#indicatorDetailView'),
   news: document.querySelector('#newsView'),
   newsDetail: document.querySelector('#newsDetailView'),
   community: document.querySelector('#communityView'),
@@ -411,7 +434,9 @@ const views = {
 
 const pageTitles = {
   dashboard: '대시보드',
+  marketDetail: '시세 상세',
   indicators: '경제 지표',
+  indicatorDetail: '지표 상세',
   news: '뉴스',
   newsDetail: '뉴스 상세',
   community: '커뮤니티',
@@ -451,7 +476,7 @@ function renderAvatar(element, label, image = '') {
 function setView(view) {
   state.view = view;
   document.querySelector('#pageTitle').textContent = pageTitles[view];
-  document.querySelector('.app-shell').classList.toggle('depth-mode', ['newsDetail', 'profile', 'profileEdit'].includes(view));
+  document.querySelector('.app-shell').classList.toggle('depth-mode', ['marketDetail', 'indicatorDetail', 'newsDetail', 'profile', 'profileEdit'].includes(view));
   Object.entries(views).forEach(([key, element]) => {
     element.classList.toggle('active', key === view);
   });
@@ -460,36 +485,81 @@ function setView(view) {
   });
 }
 
-function renderIndicatorRows(container, indicators) {
+function indicatorSchedule(type) {
+  return type === 'daily' ? '매일 업데이트' : '다음 발표 일정 확인 중';
+}
+
+function renderIndicatorRows(container, indicators, type) {
   container.innerHTML = indicators
     .map((item, index) => {
-      const trend = item.impact === 'up' ? 'up' : item.impact === 'down' ? 'down' : 'neutral';
-      const points = trend === 'up'
-        ? [34, 38, 36, 43, 41, 48, 53]
-        : trend === 'down'
-          ? [53, 49, 51, 44, 42, 38, 34]
-          : [42, 40, 43, 41, 42, 40, 42];
-
       return `
-      <article class="home-index-row trend-${trend}">
-        <div class="mini-chart">${sparkline(points)}</div>
-        <div class="home-index-main">
-          <strong>${index + 1}. ${item.name}</strong>
-          <div>
-            <span>${item.value}</span>
-            <em class="${item.impact === 'up' ? 'index-up' : item.impact === 'down' ? 'index-down' : ''}">${impactText(item.impact)}</em>
+      <button class="indicator-feed-row" data-indicator-index="${index}" data-indicator-group="${type}" type="button" aria-label="${item.name} 상세 보기">
+        <div class="indicator-feed-main">
+          <div class="indicator-compact-top">
+            <strong>${item.name}</strong>
+            <strong>${item.value}</strong>
           </div>
-          <p><span>${item.compare}</span><span>${item.change}</span></p>
+          <div class="indicator-compact-bottom">
+            <span>${item.compare} · ${item.change}</span>
+            <em class="indicator-impact-text tone-${item.impact}">${impactText(item.impact)}</em>
+          </div>
         </div>
-      </article>
+        <span class="indicator-link-arrow" aria-hidden="true">›</span>
+      </button>
     `;
     })
     .join('');
 }
 
 function renderIndicators() {
-  renderIndicatorRows(document.querySelector('#dailyIndicatorList'), dailyIndicators);
-  renderIndicatorRows(document.querySelector('#monthlyIndicatorList'), monthlyIndicators);
+  renderIndicatorRows(document.querySelector('#dailyIndicatorList'), dailyIndicators, 'daily');
+  renderIndicatorRows(document.querySelector('#monthlyIndicatorList'), monthlyIndicators, 'monthly');
+
+  const isDaily = state.indicatorType === 'daily';
+  document.querySelector('#dailyIndicatorPanel').hidden = !isDaily;
+  document.querySelector('#monthlyIndicatorPanel').hidden = isDaily;
+  document.querySelectorAll('[data-indicator-type]').forEach((button) => {
+    const isActive = button.dataset.indicatorType === state.indicatorType;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+  });
+
+  const provider = indicatorMeta.provider === 'FRED' ? 'FRED' : '샘플 데이터';
+  const updatedAt = indicatorMeta.updatedAt
+    ? new Date(indicatorMeta.updatedAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '업데이트 확인 중';
+  document.querySelector('#indicatorDataMeta').textContent = `${provider} · ${updatedAt}`;
+}
+
+function renderIndicatorDetail() {
+  const indicators = state.indicatorType === 'daily' ? dailyIndicators : monthlyIndicators;
+  const item = indicators[state.selectedIndicatorIndex] || indicators[0];
+  if (!item) return;
+
+  document.querySelector('#indicatorDetailTitle').textContent = item.name;
+  document.querySelector('#indicatorDetailContent').innerHTML = `
+    <header class="indicator-detail-summary">
+      <div>
+        <span class="indicator-detail-kicker">현재 수치</span>
+        <strong>${item.value}</strong>
+      </div>
+      <span class="${impactClass(item.impact)}">${impactText(item.impact)}</span>
+    </header>
+    <section class="indicator-explanation" aria-labelledby="indicatorExplanationTitle">
+      <h3 id="indicatorExplanationTitle">금 가격에는 어떤 의미인가요?</h3>
+      <p>${item.summary}</p>
+    </section>
+    <dl class="indicator-detail-metrics">
+      <div><dt>현재</dt><dd>${item.value}</dd></div>
+      <div><dt>비교</dt><dd>${item.compare}</dd></div>
+      <div><dt>변화</dt><dd>${item.change}</dd></div>
+    </dl>
+    <section class="indicator-detail-info">
+      <div><span>확인 주기</span><strong>${indicatorSchedule(state.indicatorType)}</strong></div>
+      <div><span>관련 지표</span><strong>${item.related || '확인 중'}</strong></div>
+      <div><span>데이터 출처</span><strong>${indicatorMeta.provider === 'FRED' ? 'FRED' : '샘플 데이터'}</strong></div>
+    </section>
+  `;
 }
 
 async function loadIndicators() {
@@ -499,6 +569,10 @@ async function loadIndicators() {
     const data = await response.json();
     dailyIndicators = data.daily || dailyIndicators;
     monthlyIndicators = data.monthly || monthlyIndicators;
+    indicatorMeta = {
+      provider: data.provider || 'sample',
+      updatedAt: data.updatedAt || null,
+    };
     renderIndicators();
   } catch (error) {
     showToast('지표 API 연결 전이라 샘플 지표를 표시합니다.');
@@ -527,83 +601,234 @@ function sparkline(points) {
   `;
 }
 
-function marketPriceTemplate(item) {
+function marketPriceTemplate(item, marketIndex) {
   return `
-    <article class="home-index-row ${item.trend === 'up' ? 'trend-up' : 'trend-down'}">
-      <div class="mini-chart">${sparkline(item.points)}</div>
+    <button class="home-index-row market-price-link ${item.trend === 'up' ? 'trend-up' : 'trend-down'}" data-market-index="${marketIndex}" type="button" aria-label="${item.name} 상세 보기">
       <div class="home-index-main">
-        <strong>${item.name}</strong>
-        <div>
+        <div class="market-row-heading">
+          <strong>${item.name}</strong>
+        </div>
+        <div class="market-row-metric">
           <span class="${item.trend === 'up' ? 'index-up' : 'index-down'}">${item.value}</span>
           <em class="${item.trend === 'up' ? 'index-up' : 'index-down'}">${item.change}</em>
         </div>
         <p>${item.details.map((detail) => `<span>${detail}</span>`).join('')}</p>
       </div>
-    </article>
+      <span class="market-link-arrow" aria-hidden="true">›</span>
+    </button>
   `;
 }
 
-function candleChart() {
-  const candles = [
-    [20, 62, 74, 108, 'down'], [28, 68, 80, 116, 'down'], [36, 72, 84, 121, 'down'],
-    [44, 78, 92, 150, 'down'], [52, 98, 146, 172, 'down'], [60, 134, 176, 190, 'down'],
-    [68, 144, 166, 204, 'up'], [76, 126, 154, 186, 'up'], [84, 106, 136, 176, 'up'],
-    [92, 76, 126, 168, 'up'], [100, 44, 86, 158, 'up'], [108, 52, 102, 152, 'down'],
-    [116, 102, 142, 178, 'down'], [124, 138, 166, 198, 'down'], [132, 150, 184, 210, 'down'],
-    [144, 128, 164, 184, 'up'], [152, 118, 148, 176, 'up'], [160, 106, 136, 170, 'down'],
-    [168, 98, 126, 160, 'up'], [176, 102, 130, 156, 'down'], [184, 92, 124, 150, 'up'],
-    [192, 120, 176, 190, 'down'], [200, 170, 196, 210, 'down'], [208, 176, 206, 224, 'down'],
-    [216, 184, 214, 230, 'up'], [224, 162, 194, 220, 'up'], [232, 176, 218, 236, 'down'],
-    [240, 208, 232, 248, 'down'], [248, 196, 226, 242, 'up'],
-  ];
-  const volume = [8, 13, 18, 24, 29, 18, 11, 14, 46, 22, 17, 12, 10, 9, 12, 18, 13, 15, 24, 28, 21, 20, 19, 24, 23, 26, 29, 31, 28];
+function goldTrendChart(item) {
+  const points = item.points.slice(0, 3).map(Number);
+  const chartWidth = 640;
+  const chartHeight = 230;
+  const plot = { left: 34, right: 604, top: 24, bottom: 174 };
+  const minValue = Math.min(...points);
+  const maxValue = Math.max(...points);
+  const padding = Math.max((maxValue - minValue) * 0.24, maxValue * 0.0008, 1);
+  const scaleMin = minValue - padding;
+  const scaleMax = maxValue + padding;
+  const xPositions = [plot.left, (plot.left + plot.right) / 2, plot.right];
+  const yFor = (value) => plot.bottom - ((value - scaleMin) / (scaleMax - scaleMin)) * (plot.bottom - plot.top);
+  const coordinates = points.map((point, index) => [xPositions[index], yFor(point)]);
+  const path = coordinates.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  const labels = ['전일 종가', '오늘 시가', '현재가'];
+  const chartSummary = `${labels.map((label, index) => `${label} ${formatUsd(points[index])}`).join(', ')}.`;
 
   return `
-    <svg class="gold-candle-chart" viewBox="0 0 340 280" aria-hidden="true" focusable="false">
-      <line class="gold-chart-guide" x1="20" y1="64" x2="320" y2="64" />
-      <text class="gold-chart-label" x="52" y="42">최고 4,525.1</text>
-      <circle class="gold-chart-dot" cx="70" cy="55" r="4" />
-      <text class="gold-chart-label" x="166" y="240">최저 4,478.8</text>
-      <circle class="gold-chart-dot" cx="178" cy="226" r="4" />
-      ${candles.map(([x, high, open, close, trend]) => `
-        <line class="candle-wick" x1="${x}" y1="${high}" x2="${x}" y2="${close + 20}" />
-        <rect class="candle-body candle-${trend}" x="${x - 2}" y="${Math.min(open, close)}" width="5" height="${Math.max(6, Math.abs(close - open))}" rx="1" />
-      `).join('')}
-      ${volume.map((height, index) => `<rect class="volume-bar" x="${20 + index * 8}" y="${264 - height}" width="4" height="${height}" rx="1" />`).join('')}
-    </svg>
+    <figure class="gold-trend-figure ${item.trend === 'up' ? 'trend-up' : 'trend-down'}">
+      <div class="gold-chart-heading">
+        <strong>오늘의 가격 흐름</strong>
+        <span>USD / 트로이온스</span>
+      </div>
+      <svg class="gold-trend-chart" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="${chartSummary}">
+        <line class="gold-chart-grid" x1="${plot.left}" y1="${plot.top}" x2="${plot.right}" y2="${plot.top}" />
+        <line class="gold-chart-grid" x1="${plot.left}" y1="${(plot.top + plot.bottom) / 2}" x2="${plot.right}" y2="${(plot.top + plot.bottom) / 2}" />
+        <line class="gold-chart-grid" x1="${plot.left}" y1="${plot.bottom}" x2="${plot.right}" y2="${plot.bottom}" />
+        <path class="gold-trend-line" d="${path}" />
+        ${coordinates.map(([x, y], index) => `
+          <circle class="gold-trend-point ${index === 2 ? 'current' : ''}" cx="${x}" cy="${y}" r="${index === 2 ? 7 : 5}" />
+          <text class="gold-point-value" x="${x}" y="${Math.max(17, y - 14)}" text-anchor="${index === 0 ? 'start' : index === 2 ? 'end' : 'middle'}">${formatUsd(points[index])}</text>
+          <text class="gold-axis-label" x="${x}" y="208" text-anchor="${index === 0 ? 'start' : index === 2 ? 'end' : 'middle'}">${labels[index]}</text>
+        `).join('')}
+      </svg>
+      <figcaption class="sr-only">${chartSummary}</figcaption>
+    </figure>
   `;
+}
+
+function goldChangeText(item) {
+  const amount = item.change.replace(/^[-+]/, '');
+  if (item.trend === 'up') return `전일보다 ${amount} 올랐습니다`;
+  if (item.trend === 'down') return `전일보다 ${amount} 내렸습니다`;
+  return '전일과 같은 수준입니다';
+}
+
+function formatGoldUpdatedAt(item) {
+  const updatedAt = item.marketStats?.updatedAt;
+  if (!updatedAt) return '업데이트 시간 확인 중';
+  return `${new Date(updatedAt).toLocaleString('ko-KR', {
+    month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })} 업데이트`;
 }
 
 function renderGoldDetail(item) {
   document.querySelector('#goldDetailCard').innerHTML = `
-    <section class="gold-detail" aria-label="국제 금값 상세">
+    <section class="gold-detail" aria-label="국제 금값 요약">
+      <button class="market-detail-hitarea" data-market-index="0" type="button" aria-label="국제 금값 상세 차트 보기"></button>
       <div class="gold-summary">
         <div class="gold-heading-stack">
-          <span class="section-label">상세 시세</span>
-          <h4>${item.name}</h4>
+          <div class="gold-title-row">
+            <h4>${item.name}</h4>
+            <span class="gold-data-status">${item.marketStats?.isFallback ? '샘플 데이터' : '실시간'}</span>
+          </div>
+          <p class="gold-unit">미국 달러 · 트로이온스당</p>
           <div class="gold-price-stack">
             <strong>${item.value}</strong>
-            <p>전일 대비 <em>${item.change}</em> · ${item.details.join(' · ')}</p>
+            <p class="gold-change ${item.trend === 'up' ? 'is-up' : item.trend === 'down' ? 'is-down' : ''}">
+              <span aria-hidden="true">${item.trend === 'up' ? '▲' : item.trend === 'down' ? '▼' : '―'}</span>
+              ${goldChangeText(item)}
+            </p>
           </div>
         </div>
+        <p class="gold-updated-at">${formatGoldUpdatedAt(item)}</p>
       </div>
-      ${candleChart()}
-      <div class="gold-range-tabs" aria-label="차트 기간">
-        <button class="active" type="button">1일</button>
-        <button type="button">1주</button>
-        <button type="button">3달</button>
-        <button type="button">1년</button>
-        <button type="button">5년</button>
-        <button class="range-chart-icon" type="button" aria-label="차트 보기"></button>
-      </div>
+      ${goldTrendChart(item)}
     </section>
   `;
 }
 
 function renderMarketBoard() {
-  const [goldPrice, ...otherPrices] = marketPrices;
+  const [goldPrice, domesticGold, goldPriceLevel, internationalSilver, domesticSilver, silverPriceLevel] = marketPrices;
   renderGoldDetail(goldPrice);
-  document.querySelector('#marketBoard').innerHTML = otherPrices.map(marketPriceTemplate).join('');
+  document.querySelector('#marketBoard').innerHTML = `
+    <section class="market-group" aria-labelledby="goldMarketGroupTitle">
+      <div class="market-group-heading">
+        <h3 id="goldMarketGroupTitle">우리나라 금 가격</h3>
+        <p>국제 금값과 비교해 확인하세요</p>
+      </div>
+      ${marketPriceTemplate(domesticGold, 1)}
+      ${marketPriceTemplate(goldPriceLevel, 2)}
+    </section>
+    <section class="market-group" aria-labelledby="silverMarketGroupTitle">
+      <div class="market-group-heading">
+        <h3 id="silverMarketGroupTitle">은 가격</h3>
+        <p>국제 가격부터 국내 가격 수준까지</p>
+      </div>
+      ${marketPriceTemplate(internationalSilver, 3)}
+      ${marketPriceTemplate(domesticSilver, 4)}
+      ${marketPriceTemplate(silverPriceLevel, 5)}
+    </section>
+  `;
+}
+
+const marketRangeOptions = {
+  day: { label: '일', count: 12, amplitude: 0.006, start: '09:00', middle: '13:00', end: '현재' },
+  week: { label: '주', count: 14, amplitude: 0.018, start: '1주 전', middle: '3일 전', end: '오늘' },
+  month: { label: '월', count: 24, amplitude: 0.045, start: '30일 전', middle: '15일 전', end: '오늘' },
+  year: { label: '년', count: 36, amplitude: 0.14, start: '1년 전', middle: '6개월 전', end: '오늘' },
+};
+
+function marketNumericValue(item) {
+  return Number(String(item.value).replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function formatMarketValue(item, value) {
+  if (item.name.includes('가격 수준')) return `${value.toFixed(1)}%`;
+  if (item.value.includes('원')) return `${Math.round(value).toLocaleString('ko-KR')}원/g`;
+  return formatUsd(value);
+}
+
+function marketHistory(item, range, marketIndex) {
+  const config = marketRangeOptions[range];
+  const current = marketNumericValue(item);
+  const direction = item.trend === 'down' ? -1 : 1;
+  const amplitude = item.name.includes('가격 수준') ? config.amplitude * 0.45 : config.amplitude;
+
+  return Array.from({ length: config.count }, (_, index) => {
+    if (index === config.count - 1) return current;
+    const progress = index / (config.count - 1);
+    const drift = direction * amplitude * (progress - 1) * 0.55;
+    const wave = Math.sin((index + marketIndex * 1.7) * 1.25) * amplitude * 0.34;
+    const secondaryWave = Math.cos((index + marketIndex) * 0.58) * amplitude * 0.18;
+    return current * (1 + drift + wave + secondaryWave);
+  });
+}
+
+function marketHistoryChart(item, range, marketIndex) {
+  const values = marketHistory(item, range, marketIndex);
+  const width = 700;
+  const height = 330;
+  const plot = { left: 24, right: 612, top: 30, bottom: 252 };
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const padding = Math.max((maximum - minimum) * 0.14, maximum * 0.001, 0.1);
+  const scaleMin = minimum - padding;
+  const scaleMax = maximum + padding;
+  const xFor = (index) => plot.left + (index / (values.length - 1)) * (plot.right - plot.left);
+  const yFor = (value) => plot.bottom - ((value - scaleMin) / (scaleMax - scaleMin)) * (plot.bottom - plot.top);
+  const path = values.map((value, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(1)} ${yFor(value).toFixed(1)}`).join(' ');
+  const config = marketRangeOptions[range];
+  const gridValues = [scaleMax, (scaleMax + scaleMin) / 2, scaleMin];
+  const firstValue = values[0];
+  const currentValue = values[values.length - 1];
+  const changePercent = firstValue ? ((currentValue - firstValue) / firstValue) * 100 : 0;
+
+  return {
+    values,
+    minimum,
+    maximum,
+    changePercent,
+    markup: `
+      <svg class="market-history-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${item.name} ${config.label}간 가격 추이">
+        ${gridValues.map((value) => `
+          <line class="market-history-grid" x1="${plot.left}" y1="${yFor(value)}" x2="${plot.right}" y2="${yFor(value)}" />
+          <text class="market-history-y-label" x="680" y="${yFor(value) + 5}" text-anchor="end">${formatMarketValue(item, value)}</text>
+        `).join('')}
+        <path class="market-history-line" d="${path}" />
+        <circle class="market-history-current" cx="${xFor(values.length - 1)}" cy="${yFor(currentValue)}" r="7" />
+        <text class="market-history-current-label" x="${plot.right - 10}" y="${Math.max(20, yFor(currentValue) - 16)}" text-anchor="end">현재 ${formatMarketValue(item, currentValue)}</text>
+        <text class="market-history-x-label" x="${plot.left}" y="300" text-anchor="start">${config.start}</text>
+        <text class="market-history-x-label" x="${(plot.left + plot.right) / 2}" y="300" text-anchor="middle">${config.middle}</text>
+        <text class="market-history-x-label" x="${plot.right}" y="300" text-anchor="end">${config.end}</text>
+      </svg>
+    `,
+  };
+}
+
+function renderMarketDetail() {
+  const item = marketPrices[state.selectedMarketIndex] || marketPrices[0];
+  const chart = marketHistoryChart(item, state.marketRange, state.selectedMarketIndex);
+  const changeDirection = chart.changePercent > 0 ? '올랐습니다' : chart.changePercent < 0 ? '내렸습니다' : '변동이 없습니다';
+  const changeClass = chart.changePercent > 0 ? 'is-up' : chart.changePercent < 0 ? 'is-down' : '';
+
+  document.querySelector('#marketDetailTitle').textContent = item.name;
+  document.querySelector('#marketDetailContent').innerHTML = `
+    <header class="market-detail-summary">
+      <div>
+        <span class="market-detail-kicker">현재 가격</span>
+        <strong>${item.value}</strong>
+        <p class="market-detail-change ${changeClass}">${marketRangeOptions[state.marketRange].label}간 ${Math.abs(chart.changePercent).toFixed(2)}% ${changeDirection}</p>
+      </div>
+      <span class="gold-data-status">샘플 시계열</span>
+    </header>
+    <div class="market-range-control" role="group" aria-label="차트 기간 선택">
+      ${Object.entries(marketRangeOptions).map(([key, option]) => `
+        <button class="${state.marketRange === key ? 'active' : ''}" data-market-range="${key}" type="button" aria-pressed="${state.marketRange === key}">${option.label}</button>
+      `).join('')}
+    </div>
+    <section class="market-chart-panel" aria-label="${item.name} 가격 차트">
+      ${chart.markup}
+    </section>
+    <dl class="market-detail-stats">
+      <div><dt>기간 시작</dt><dd>${formatMarketValue(item, chart.values[0])}</dd></div>
+      <div><dt>기간 최고</dt><dd>${formatMarketValue(item, chart.maximum)}</dd></div>
+      <div><dt>기간 최저</dt><dd>${formatMarketValue(item, chart.minimum)}</dd></div>
+      <div><dt>현재 가격</dt><dd>${item.value}</dd></div>
+    </dl>
+    <p class="market-detail-note">현재 기간별 차트는 샘플 데이터입니다. 실제 투자 판단에는 사용하지 마세요.</p>
+  `;
 }
 
 function renderDashboard() {
@@ -633,15 +858,7 @@ function normalizeGoldMarketPrice(gold) {
       gold.source ? `${gold.source} 기준` : 'XAU/USD 기준',
       gold.isFallback ? '샘플 데이터' : '실시간',
     ],
-    points: [
-      previousClose,
-      Number(gold.open || previousClose),
-      Number(gold.low || previousClose),
-      price,
-      Number(gold.high || price),
-      Number(gold.bid || price),
-      Number(gold.ask || price),
-    ],
+    points: [previousClose, Number(gold.open || previousClose), price],
     marketStats: {
       open: gold.open,
       volume: gold.bid && gold.ask ? `${formatUsd(gold.bid)} / ${formatUsd(gold.ask)}` : '확인 중',
@@ -900,6 +1117,51 @@ document.querySelectorAll('.nav-button').forEach((button) => {
 
 document.querySelectorAll('[data-view-jump]').forEach((button) => {
   button.addEventListener('click', () => setView(button.dataset.viewJump));
+});
+
+document.body.addEventListener('click', (event) => {
+  const marketButton = event.target.closest('[data-market-index]');
+  if (marketButton) {
+    state.selectedMarketIndex = Number(marketButton.dataset.marketIndex);
+    state.marketRange = 'day';
+    renderMarketDetail();
+    setView('marketDetail');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+
+  const rangeButton = event.target.closest('[data-market-range]');
+  if (rangeButton) {
+    state.marketRange = rangeButton.dataset.marketRange;
+    renderMarketDetail();
+  }
+});
+
+document.querySelector('#marketDetailBackButton').addEventListener('click', () => {
+  setView('dashboard');
+});
+
+document.body.addEventListener('click', (event) => {
+  const typeButton = event.target.closest('[data-indicator-type]');
+  if (typeButton) {
+    state.indicatorType = typeButton.dataset.indicatorType;
+    renderIndicators();
+    return;
+  }
+
+  const indicatorButton = event.target.closest('[data-indicator-index]');
+  if (indicatorButton) {
+    state.indicatorType = indicatorButton.dataset.indicatorGroup;
+    state.selectedIndicatorIndex = Number(indicatorButton.dataset.indicatorIndex);
+    renderIndicatorDetail();
+    setView('indicatorDetail');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+});
+
+document.querySelector('#indicatorDetailBackButton').addEventListener('click', () => {
+  renderIndicators();
+  setView('indicators');
 });
 
 document.body.addEventListener('click', (event) => {

@@ -324,34 +324,80 @@ textarea:focus-visible {
 }
 
 .gold-detail-card {
-  margin: 12px 0 18px;
+  margin: 10px 0 24px;
 }
 
 .gold-detail {
+  position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--surface-2);
+}
+
+.market-detail-hitarea {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.market-detail-hitarea:hover {
+  box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.5);
+}
+
+.market-detail-hitarea:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: -3px;
 }
 
 .gold-summary {
   display: flex;
   align-items: flex-start;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 18px;
-  padding: 18px 18px 8px;
+  padding: 24px 24px 12px;
 }
 
 .gold-heading-stack {
   min-width: 0;
 }
 
+.gold-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .gold-summary h4 {
   margin: 0;
   color: var(--text-2);
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.35;
   font-weight: 800;
+}
+
+.gold-data-status {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gold-unit {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .gold-price-stack {
@@ -362,7 +408,7 @@ textarea:focus-visible {
 .gold-price-stack strong {
   display: block;
   color: var(--text);
-  font-size: 28px;
+  font-size: 40px;
   line-height: 1.15;
   font-weight: 900;
 }
@@ -375,88 +421,107 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-.gold-price-stack em {
-  color: var(--blue);
-  font-style: normal;
+.gold-price-stack .gold-change {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-2);
+  font-size: 16px;
 }
 
-.gold-candle-chart {
+.gold-change.is-up {
+  color: var(--red);
+}
+
+.gold-change.is-down {
+  color: var(--blue);
+}
+
+.gold-updated-at {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.gold-trend-figure {
+  margin: 0;
+  padding: 18px 24px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.gold-chart-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.gold-chart-heading strong {
+  color: var(--text-2);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.gold-chart-heading span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gold-trend-chart {
   width: 100%;
   height: auto;
   display: block;
-  margin-top: 8px;
-  padding: 0 12px;
 }
 
-.gold-chart-guide {
-  stroke: rgba(148, 163, 184, 0.32);
-  stroke-width: 1.5;
-  stroke-dasharray: 5 8;
+.gold-chart-grid {
+  stroke: rgba(148, 163, 184, 0.2);
+  stroke-width: 1;
 }
 
-.gold-chart-label {
-  fill: var(--muted);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.gold-chart-dot {
-  fill: var(--muted);
-}
-
-.candle-wick {
-  stroke: rgba(168, 179, 194, 0.42);
-  stroke-width: 2;
+.gold-trend-line {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 5;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.candle-body {
-  stroke-width: 0;
+.gold-trend-figure.trend-up .gold-trend-line {
+  stroke: var(--red);
 }
 
-.candle-up {
-  fill: var(--red);
+.gold-trend-point {
+  fill: var(--surface-2);
+  stroke: var(--blue);
+  stroke-width: 4;
 }
 
-.candle-down {
+.gold-trend-figure.trend-up .gold-trend-point {
+  stroke: var(--red);
+}
+
+.gold-trend-point.current {
   fill: var(--blue);
 }
 
-.volume-bar {
-  fill: rgba(168, 179, 194, 0.3);
+.gold-trend-figure.trend-up .gold-trend-point.current {
+  fill: var(--red);
 }
 
-.gold-range-tabs {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-  padding: 4px 18px 18px;
-}
-
-.gold-range-tabs button {
-  min-height: 38px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--muted-2);
-  font-size: 14px;
+.gold-point-value {
+  fill: var(--text-2);
+  font-size: 15px;
   font-weight: 800;
 }
 
-.gold-range-tabs .active {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.range-chart-icon {
-  position: relative;
-}
-
-.range-chart-icon::before {
-  position: absolute;
-  inset: 14px 10px 12px;
-  background: linear-gradient(135deg, transparent 0 22%, var(--red) 23% 34%, transparent 35% 48%, var(--red) 49% 62%, transparent 63%);
-  content: "";
+.gold-axis-label {
+  fill: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .gold-market-stats {
@@ -506,8 +571,42 @@ textarea:focus-visible {
 }
 
 .market-price-panel .home-index-list {
+  display: grid;
   gap: 0;
   margin-top: 2px;
+}
+
+#marketBoard {
+  gap: 28px;
+  margin-top: 0;
+}
+
+.market-group {
+  padding: 4px 0 0;
+}
+
+.market-group + .market-group {
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.market-group-heading {
+  margin-bottom: 8px;
+}
+
+.market-group-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.market-group-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .market-price-panel .home-index-row {
@@ -516,6 +615,39 @@ textarea:focus-visible {
   gap: 30px;
   padding: 14px 8px 14px 2px;
   border-top: 0;
+}
+
+.market-group .market-price-link {
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 0;
+  padding: 16px 8px 16px 2px;
+}
+
+.market-price-link {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.market-price-link:hover {
+  background: var(--surface-hover);
+}
+
+.market-price-link:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.market-link-arrow {
+  align-self: center;
+  color: var(--muted);
+  font-size: 28px;
+  line-height: 1;
 }
 
 .market-price-panel .mini-chart {
@@ -561,6 +693,11 @@ textarea:focus-visible {
   align-items: center;
 }
 
+.market-row-heading {
+  grid-area: title;
+  min-width: 0;
+}
+
 .market-price-panel .home-index-main strong {
   grid-area: title;
   margin: 0;
@@ -584,7 +721,7 @@ textarea:focus-visible {
   content: " ";
 }
 
-.market-price-panel .home-index-main div {
+.market-price-panel .home-index-main > div:not(.market-row-heading) {
   grid-area: metric;
   display: grid;
   gap: 6px;
@@ -615,6 +752,161 @@ textarea:focus-visible {
 
 .market-price-panel .index-down {
   color: #3182f6;
+}
+
+.market-detail-content {
+  min-width: 0;
+  padding-bottom: 48px;
+}
+
+.market-detail-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 6px 4px 24px;
+}
+
+.market-detail-kicker {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.market-detail-summary strong {
+  display: block;
+  color: var(--text);
+  font-size: 38px;
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+.market-detail-change {
+  margin: 9px 0 0;
+  color: var(--muted-2);
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
+.market-detail-change.is-up {
+  color: var(--red);
+}
+
+.market-detail-change.is-down {
+  color: var(--blue);
+}
+
+.market-range-control {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.market-range-control button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-2);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.market-range-control button.active {
+  background: var(--surface-hover);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.market-chart-panel {
+  min-height: 330px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.market-history-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.market-history-grid {
+  stroke: rgba(148, 163, 184, 0.2);
+  stroke-width: 1;
+}
+
+.market-history-line {
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.market-history-current {
+  fill: var(--yellow);
+  stroke: var(--surface-2);
+  stroke-width: 4;
+}
+
+.market-history-y-label,
+.market-history-x-label {
+  fill: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.market-history-current-label {
+  fill: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.market-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.market-detail-stats div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.market-detail-stats dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.market-detail-stats dd {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.market-detail-note {
+  margin: 14px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .home-index-list {
@@ -655,7 +947,7 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.home-index-main div {
+.home-index-main > div:not(.market-row-heading) {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -709,8 +1001,255 @@ textarea:focus-visible {
   gap: 14px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.indicator-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.indicator-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  width: min(100%, 360px);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.indicator-tabs button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-2);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.indicator-tabs button.active {
+  background: var(--surface-hover);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.indicator-data-meta {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: right;
+}
+
 .indicator-group-panel {
-  padding: 20px;
+  padding: 6px 18px;
+}
+
+.indicator-feed-list {
+  display: grid;
+}
+
+.indicator-feed-row {
+  width: 100%;
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.indicator-feed-row + .indicator-feed-row {
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.indicator-feed-row:hover {
+  background: var(--surface-hover);
+}
+
+.indicator-feed-row:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.indicator-feed-main {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.indicator-compact-top,
+.indicator-compact-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.indicator-compact-top > strong:first-child {
+  min-width: 0;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.indicator-compact-top > strong:last-child {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.indicator-compact-bottom > span {
+  min-width: 0;
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.indicator-impact-text {
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1.45;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.indicator-impact-text.tone-up {
+  color: var(--red);
+}
+
+.indicator-impact-text.tone-down {
+  color: var(--blue);
+}
+
+.indicator-impact-text.tone-neutral {
+  color: var(--muted-2);
+}
+
+.indicator-link-arrow {
+  color: var(--muted);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.indicator-detail-content {
+  min-width: 0;
+  padding-bottom: 48px;
+}
+
+.indicator-detail-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 8px 4px 28px;
+}
+
+.indicator-detail-kicker {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.indicator-detail-summary > div > strong {
+  display: block;
+  color: var(--text);
+  font-size: 40px;
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+.indicator-explanation {
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.indicator-explanation h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.indicator-explanation p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.indicator-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.indicator-detail-metrics div {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.indicator-detail-metrics dt,
+.indicator-detail-info span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.indicator-detail-metrics dd {
+  margin: 7px 0 0;
+  color: var(--text-2);
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.indicator-detail-info {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.indicator-detail-info div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.indicator-detail-info strong {
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .indicator-group-title {
@@ -1638,6 +2177,113 @@ textarea:focus-visible {
 
   .content-grid {
     gap: 12px;
+  }
+
+  .indicator-toolbar {
+    display: grid;
+  }
+
+  .indicator-tabs {
+    width: 100%;
+  }
+
+  .indicator-data-meta {
+    text-align: left;
+  }
+
+  .indicator-group-panel {
+    padding: 4px 14px;
+  }
+
+  .indicator-feed-row {
+    grid-template-columns: minmax(0, 1fr) 24px;
+    padding: 13px 2px;
+  }
+
+  .indicator-compact-top,
+  .indicator-compact-bottom {
+    gap: 8px;
+  }
+
+  .indicator-detail-summary {
+    display: grid;
+    gap: 14px;
+  }
+
+  .indicator-detail-summary > div > strong {
+    font-size: 34px;
+  }
+
+  .indicator-detail-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .indicator-detail-info div {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .gold-summary {
+    display: grid;
+    padding: 20px 18px 12px;
+  }
+
+  .gold-price-stack strong {
+    font-size: 34px;
+  }
+
+  .gold-updated-at {
+    margin: 0;
+    text-align: left;
+  }
+
+  .gold-trend-figure {
+    padding: 16px 12px 14px;
+  }
+
+  .gold-chart-heading {
+    padding: 0 6px;
+  }
+
+  .gold-point-value {
+    font-size: 14px;
+  }
+
+  .market-price-panel .home-index-row {
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .market-group .market-price-link {
+    grid-template-columns: minmax(0, 1fr) 24px;
+    gap: 0;
+  }
+
+  .market-price-panel .home-index-main {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 10px;
+  }
+
+  .market-group-heading h3 {
+    font-size: 18px;
+  }
+
+  .market-detail-summary {
+    display: grid;
+    gap: 12px;
+  }
+
+  .market-detail-summary strong {
+    font-size: 34px;
+  }
+
+  .market-chart-panel {
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .market-detail-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .home-index-row {
