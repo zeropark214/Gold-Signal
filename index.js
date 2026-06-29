@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { XMLParser } = require('fast-xml-parser');
 
 function loadEnvFile(filePath = path.join(__dirname, '.env')) {
   if (!fs.existsSync(filePath)) return;
@@ -38,12 +39,34 @@ const GOLD_API_BASE_URL = 'https://www.goldapi.io/api';
 const GOLD_API_SYMBOL = process.env.GOLD_API_SYMBOL || 'XAU';
 const GOLD_API_CURRENCY = process.env.GOLD_API_CURRENCY || 'USD';
 const GOLD_API_DATE = process.env.GOLD_API_DATE || '';
+const YAHOO_FINANCE_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF';
+const KRX_GOLD_API_URL = 'https://apis.data.go.kr/1160100/service/GetGeneralProductInfoService/getGoldPriceInfo';
 const FRED_API_BASE_URL = 'https://api.stlouisfed.org/fred/series/observations';
 const NEWS_API_BASE_URL = 'https://newsapi.org/v2/everything';
 const GNEWS_API_BASE_URL = 'https://gnews.io/api/v4/search';
+const GDELT_API_BASE_URL = 'https://api.gdeltproject.org/api/v2/doc/doc';
+const GOOGLE_TRANSLATE_API_URL = 'https://translation.googleapis.com/language/translate/v2';
+const MYMEMORY_TRANSLATE_API_URL = 'https://api.mymemory.translated.net/get';
 const NEWS_QUERY = process.env.NEWS_QUERY || '(gold OR bullion OR "Federal Reserve" OR FOMC OR Powell OR "Kevin Warsh" OR "interest rates" OR "rate cut" OR PCE OR CPI OR inflation OR "Treasury yields" OR "US dollar" OR "dollar index" OR DXY OR Trump OR tariff OR sanctions OR Iran OR Israel OR Gaza OR "Middle East")';
 const NEWS_PAGE_SIZE = Number(process.env.NEWS_PAGE_SIZE || 10);
 const NEWS_MIN_SCORE = Number(process.env.NEWS_MIN_SCORE || 60);
+const NEWS_FETCH_TIMEOUT_MS = Number(process.env.NEWS_FETCH_TIMEOUT_MS || 7000);
+const newsTranslationCache = new Map();
+const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+const defaultOfficialNewsFeeds = [
+  { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_monetary.xml' },
+  { name: 'Federal Reserve Speeches', url: 'https://www.federalreserve.gov/feeds/speeches.xml' },
+];
+const googleNewsTopics = [
+  'gold price OR bullion when:1d',
+  'central bank gold purchase OR gold reserves when:1d',
+  'Japan interest rate gold OR Bank of Japan gold when:1d',
+  'India gold import OR India gold duty when:1d',
+  'tariff sanctions gold price when:1d',
+];
+const newsStreamClients = new Set();
+let latestNewsSnapshot = null;
+let latestNewsSnapshotAt = 0;
 
 const fallbackIndicators = {
   daily: [
@@ -450,6 +473,144 @@ function normalizeGoldApiResponse(data) {
   };
 }
 
+function normalizeYahooGoldResponse(result) {
+  const meta = result.meta || {};
+  const quotes = result.indicators?.quote?.[0] || {};
+  const closes = (quotes.close || []).filter(Number.isFinite);
+  const price = Number(meta.regularMarketPrice || closes[closes.length - 1]);
+  const previousClose = Number(meta.chartPreviousClose || meta.previousClose || price);
+  const change = price - previousClose;
+
+  return {
+    symbol: 'GC=F',
+    name: '국제 금선물',
+    price,
+    change,
+    changePercent: previousClose ? (change / previousClose) * 100 : 0,
+    bid: meta.bid,
+    ask: meta.ask,
+    open: Number(meta.regularMarketOpen || quotes.open?.find(Number.isFinite) || previousClose),
+    high: Number(meta.regularMarketDayHigh || Math.max(...(quotes.high || []).filter(Number.isFinite))),
+    low: Number(meta.regularMarketDayLow || Math.min(...(quotes.low || []).filter(Number.isFinite))),
+    previousClose,
+    gram24k: price / 31.1034768,
+    unit: '트로이온스',
+    currency: meta.currency || 'USD',
+    source: `${meta.exchangeName || 'COMEX'} 금 선물`,
+    updatedAt: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : new Date().toISOString(),
+    isFallback: false,
+  };
+}
+
+const goldHistoryRanges = {
+  day: { range: '1d', interval: '5m' },
+  week: { range: '5d', interval: '30m' },
+  month: { range: '1mo', interval: '1d' },
+  year: { range: '1y', interval: '1wk' },
+};
+
+async function fetchYahooGoldChart(range = 'day') {
+  const config = goldHistoryRanges[range] || goldHistoryRanges.day;
+  const params = new URLSearchParams({ range: config.range, interval: config.interval, includePrePost: 'false' });
+  const response = await fetch(`${YAHOO_FINANCE_CHART_URL}?${params}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 GoldSignal/1.0' },
+    signal: AbortSignal.timeout(7000),
+  });
+  if (!response.ok) throw new Error(`Gold futures API failed with ${response.status}`);
+  const data = await response.json();
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error(data.chart?.error?.description || 'Gold futures data is unavailable');
+  return result;
+}
+
+async function getGoldHistory(range = 'day') {
+  const result = await fetchYahooGoldChart(range);
+  const closes = result.indicators?.quote?.[0]?.close || [];
+  const history = (result.timestamp || []).map((timestamp, index) => ({
+    date: new Date(timestamp * 1000).toISOString(),
+    value: Number(closes[index]),
+  })).filter((point) => Number.isFinite(point.value));
+  return {
+    provider: `${result.meta?.exchangeName || 'COMEX'} 금 선물`,
+    symbol: result.meta?.symbol || 'GC=F',
+    range,
+    history,
+  };
+}
+
+function compactDate(date) {
+  return date.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+function domesticGoldStartDate(range) {
+  const days = { day: 14, week: 30, month: 60, year: 400 }[range] || 14;
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+function numericField(item, ...keys) {
+  for (const key of keys) {
+    const value = Number(String(item?.[key] ?? '').replace(/,/g, ''));
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+async function getDomesticGold(range = 'day') {
+  if (!hasConfiguredEnv('DATA_GO_KR_SERVICE_KEY')) {
+    throw new Error('DATA_GO_KR_SERVICE_KEY is not configured');
+  }
+  const params = new URLSearchParams({
+    serviceKey: process.env.DATA_GO_KR_SERVICE_KEY,
+    resultType: 'json',
+    pageNo: '1',
+    numOfRows: '1000',
+    beginBasDt: compactDate(domesticGoldStartDate(range)),
+    endBasDt: compactDate(new Date()),
+  });
+  const response = await fetch(`${KRX_GOLD_API_URL}?${params}`, {
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new Error(`KRX gold API failed with ${response.status}`);
+  const data = await response.json();
+  const resultCode = data.response?.header?.resultCode;
+  if (resultCode && resultCode !== '00') {
+    throw new Error(data.response?.header?.resultMsg || 'KRX gold API returned an error');
+  }
+  const rawItems = data.response?.body?.items?.item || [];
+  const items = asArray(rawItems)
+    .filter((item) => /금\s*99\.99.*1kg|금.*1kg/i.test(item.itmsNm || item.itemName || ''))
+    .sort((left, right) => String(left.basDt).localeCompare(String(right.basDt)));
+  const selected = items.length ? items : asArray(rawItems).sort((left, right) => String(left.basDt).localeCompare(String(right.basDt)));
+  const history = selected.map((item) => ({
+    date: item.basDt,
+    value: numericField(item, 'clpr', 'closePrice'),
+  })).filter((point) => Number.isFinite(point.value));
+  if (!history.length) throw new Error('KRX gold price data is empty');
+  const latest = selected[selected.length - 1];
+  const previous = history[history.length - 2]?.value ?? history[history.length - 1].value;
+  const price = history[history.length - 1].value;
+  const change = numericField(latest, 'vs', 'priceChange') ?? price - previous;
+  const changePercent = numericField(latest, 'fltRt', 'changeRate') ?? (previous ? (change / previous) * 100 : 0);
+  return {
+    name: '국내 금값',
+    symbol: latest.srtnCd || latest.isinCd || 'KRX GOLD 1kg',
+    price,
+    change,
+    changePercent,
+    open: numericField(latest, 'mkp', 'openPrice'),
+    high: numericField(latest, 'hipr', 'highPrice'),
+    low: numericField(latest, 'lopr', 'lowPrice'),
+    previousClose: previous,
+    volume: numericField(latest, 'trqu', 'tradeVolume'),
+    unit: '원/g',
+    source: 'KRX 금시장 99.99_1kg',
+    updatedAt: latest.basDt,
+    isFallback: false,
+    range,
+    history,
+  };
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -510,8 +671,8 @@ function normalizeNewsArticle(article, index, provider) {
   const description = article.description || article.content || '원문에서 세부 내용을 확인할 수 있습니다.';
 
   return {
-    id: `${provider}-${index}-${Buffer.from(title).toString('base64url').slice(0, 12)}`,
-    titleKo: title,
+    id: `${provider}-${Buffer.from(title.toLowerCase()).toString('base64url').slice(0, 24)}`,
+    titleKo: null,
     titleOriginal: title,
     source: sourceName || provider,
     publishedAt,
@@ -521,26 +682,259 @@ function normalizeNewsArticle(article, index, provider) {
     impactScore: signal.score,
     relatedAssets: signal.assets,
     highlights: signal.highlights.length ? signal.highlights : ['금값 영향 요인 확인 필요'],
-    summaryKo: description,
+    summaryKo: null,
+    summaryOriginal: description,
     clusterKey: `${provider}-${sourceName || 'source'}-${index}`,
     duplicateCount: 1,
+    clusterSources: [sourceName || provider],
+    translationAvailable: false,
+    sourceType: article.sourceType || 'media',
+    country: article.country || '',
   };
+}
+
+function newsTitleTokens(title) {
+  const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'as', 'at', 'with', 'from', 'after', 'amid']);
+  return new Set(String(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !stopWords.has(token)));
+}
+
+function newsTitleSimilarity(leftTitle, rightTitle) {
+  const left = newsTitleTokens(leftTitle);
+  const right = newsTitleTokens(rightTitle);
+  if (!left.size || !right.size) return 0;
+  const intersection = [...left].filter((token) => right.has(token)).length;
+  return intersection / Math.min(left.size, right.size);
+}
+
+function clusterDuplicateNews(items) {
+  return items.reduce((clusters, item) => {
+    const existing = clusters.find((candidate) => newsTitleSimilarity(candidate.titleOriginal, item.titleOriginal) >= 0.72);
+    if (!existing) {
+      clusters.push(item);
+      return clusters;
+    }
+
+    existing.duplicateCount += 1;
+    existing.clusterSources = uniqueValues([...existing.clusterSources, item.source]);
+    existing.tags = uniqueValues([...existing.tags, ...item.tags]).slice(0, 4);
+    existing.relatedAssets = uniqueValues([...existing.relatedAssets, ...item.relatedAssets]).slice(0, 4);
+    existing.highlights = uniqueValues([...existing.highlights, ...item.highlights]).slice(0, 3);
+    if (item.impactScore > existing.impactScore) {
+      existing.impactScore = item.impactScore;
+      existing.priority = item.priority;
+    }
+    return clusters;
+  }, []);
+}
+
+function decodeTranslatedText(value) {
+  return String(value)
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+async function translateNewsItems(items) {
+  if (!items.length) return items;
+
+  if (hasConfiguredEnv('GOOGLE_TRANSLATE_API_KEY')) {
+    try {
+      const texts = items.flatMap((item) => [item.titleOriginal, item.summaryOriginal]);
+      const response = await fetch(`${GOOGLE_TRANSLATE_API_URL}?key=${encodeURIComponent(process.env.GOOGLE_TRANSLATE_API_KEY)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: texts, source: 'en', target: 'ko', format: 'text' }),
+      });
+      if (!response.ok) throw new Error(`Google Translate failed with ${response.status}`);
+
+      const data = await response.json();
+      const translations = data.data?.translations || [];
+      if (translations.length === texts.length) {
+        return items.map((item, index) => ({
+          ...item,
+          titleKo: decodeTranslatedText(translations[index * 2].translatedText),
+          summaryKo: decodeTranslatedText(translations[index * 2 + 1].translatedText),
+          translationAvailable: true,
+        }));
+      }
+    } catch (error) {
+      // Continue with the keyless fallback below.
+    }
+  }
+
+  return Promise.all(items.map(async (item) => {
+    const [titleKo, summaryKo] = await Promise.all([
+      translateWithMyMemory(item.titleOriginal),
+      translateWithMyMemory(item.summaryOriginal),
+    ]);
+    return {
+      ...item,
+      titleKo: titleKo || item.titleOriginal,
+      summaryKo: summaryKo || item.summaryOriginal,
+      translationAvailable: Boolean(titleKo || summaryKo),
+    };
+  }));
+}
+
+function truncateTranslationText(value, maxBytes = 480) {
+  let result = String(value || '').trim();
+  while (Buffer.byteLength(result, 'utf8') > maxBytes) result = result.slice(0, -1);
+  return result;
+}
+
+async function translateWithMyMemory(value) {
+  const sourceText = truncateTranslationText(value);
+  if (!sourceText) return '';
+  if (newsTranslationCache.has(sourceText)) return newsTranslationCache.get(sourceText);
+
+  const params = new URLSearchParams({ q: sourceText, langpair: 'en|ko', mt: '1' });
+  if (hasConfiguredEnv('MYMEMORY_EMAIL')) params.set('de', process.env.MYMEMORY_EMAIL.trim());
+
+  try {
+    const response = await fetch(`${MYMEMORY_TRANSLATE_API_URL}?${params}`);
+    if (!response.ok) return '';
+    const data = await response.json();
+    const translated = decodeTranslatedText(data.responseData?.translatedText || '');
+    const result = translated && translated.toLowerCase() !== sourceText.toLowerCase() ? translated : '';
+    newsTranslationCache.set(sourceText, result);
+    return result;
+  } catch (error) {
+    return '';
+  }
 }
 
 function relevantNewsItems(articles, provider) {
   return articles
     .map((article, index) => normalizeNewsArticle(article, index, provider))
-    .filter((item) => item.impactScore >= NEWS_MIN_SCORE)
-    .slice(0, NEWS_PAGE_SIZE);
+    .filter((item) => item.impactScore >= NEWS_MIN_SCORE);
 }
 
-async function getNewsFromNewsApi() {
+async function finalizeNewsItems(items) {
+  const clustered = clusterDuplicateNews(items)
+    .sort((left, right) => new Date(right.publishedAt) - new Date(left.publishedAt))
+    .slice(0, NEWS_PAGE_SIZE);
+
+  try {
+    return await translateNewsItems(clustered);
+  } catch (error) {
+    return clustered;
+  }
+}
+
+function asArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function textValue(value) {
+  if (typeof value === 'string') return value;
+  return value?.['#text'] || value?.text || '';
+}
+
+function officialNewsFeeds() {
+  if (!hasConfiguredEnv('OFFICIAL_NEWS_FEEDS_JSON')) return defaultOfficialNewsFeeds;
+  try {
+    const feeds = JSON.parse(process.env.OFFICIAL_NEWS_FEEDS_JSON);
+    return Array.isArray(feeds) ? feeds.filter((feed) => feed.name && feed.url) : defaultOfficialNewsFeeds;
+  } catch (error) {
+    return defaultOfficialNewsFeeds;
+  }
+}
+
+async function getNewsFromOfficialFeeds() {
+  const results = await Promise.allSettled(officialNewsFeeds().map(async (feed) => {
+    const response = await fetch(feed.url, {
+      headers: { 'User-Agent': 'GoldSignal/1.0 news aggregator' },
+      signal: AbortSignal.timeout(NEWS_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`${feed.name} RSS failed with ${response.status}`);
+    const parsed = xmlParser.parse(await response.text());
+    const entries = asArray(parsed.rss?.channel?.item || parsed.feed?.entry);
+    return entries.map((entry) => ({
+      title: textValue(entry.title),
+      description: textValue(entry.description || entry.summary || entry.content),
+      url: entry.link?.['@_href'] || textValue(entry.link) || textValue(entry.guid),
+      publishedAt: textValue(entry.pubDate || entry.published || entry.updated),
+      source: { name: feed.name },
+      sourceType: 'official',
+    }));
+  }));
+
+  return {
+    provider: '공식기관',
+    items: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []),
+  };
+}
+
+async function getNewsFromGoogleNewsRss() {
+  const results = await Promise.allSettled(googleNewsTopics.map(async (query) => {
+    const params = new URLSearchParams({ q: query, hl: 'en-US', gl: 'US', ceid: 'US:en' });
+    const response = await fetch(`https://news.google.com/rss/search?${params}`, {
+      headers: { 'User-Agent': 'GoldSignal/1.0 news aggregator' },
+      signal: AbortSignal.timeout(NEWS_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`Google News RSS failed with ${response.status}`);
+    const parsed = xmlParser.parse(await response.text());
+    return asArray(parsed.rss?.channel?.item).map((entry) => ({
+      title: textValue(entry.title),
+      description: textValue(entry.description),
+      url: textValue(entry.link),
+      publishedAt: textValue(entry.pubDate),
+      source: { name: textValue(entry.source) || 'Google News' },
+      sourceType: 'news-index',
+    }));
+  }));
+
+  return {
+    provider: 'Google News 실시간',
+    items: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []),
+  };
+}
+
+async function getNewsFromGdelt() {
+  if (process.env.GDELT_ENABLED === 'false') return { provider: 'GDELT', items: [] };
+  const query = process.env.GDELT_QUERY
+    || '(gold OR bullion OR "central bank") (rate OR purchase OR reserve OR tariff OR sanction OR import OR inflation OR yen OR dollar)';
+  const params = new URLSearchParams({
+    query,
+    mode: 'artlist',
+    maxrecords: String(Math.min(Math.max(NEWS_PAGE_SIZE * 4, 25), 250)),
+    format: 'json',
+    sort: 'datedesc',
+  });
+  const response = await fetch(`${GDELT_API_BASE_URL}?${params}`, {
+    signal: AbortSignal.timeout(NEWS_FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`GDELT failed with ${response.status}`);
+  const data = await response.json();
+  return {
+    provider: 'GDELT',
+    items: (data.articles || []).map((article) => ({
+      title: article.title,
+      description: article.title,
+      url: article.url,
+      publishedAt: article.seendate,
+      source: { name: article.domain || 'GDELT' },
+      country: article.sourcecountry || '',
+      sourceType: 'global-monitoring',
+    })),
+  };
+}
+
+async function getNewsFromNewsApi(page = 1) {
   const params = new URLSearchParams({
     q: NEWS_QUERY,
     searchIn: 'title,description',
     language: 'en',
     sortBy: 'publishedAt',
     pageSize: String(Math.min(Math.max(NEWS_PAGE_SIZE * 4, 20), 100)),
+    page: String(page),
     apiKey: process.env.NEWS_API_KEY,
   });
 
@@ -556,16 +950,17 @@ async function getNewsFromNewsApi() {
 
   return {
     provider: 'NewsAPI.org',
-    items: relevantNewsItems(data.articles || [], 'newsapi'),
+    items: data.articles || [],
   };
 }
 
-async function getNewsFromGNews() {
+async function getNewsFromGNews(page = 1) {
   const params = new URLSearchParams({
     q: NEWS_QUERY,
     lang: 'en',
     country: 'us',
     max: String(Math.min(Math.max(NEWS_PAGE_SIZE, 1), 10)),
+    page: String(page),
     apikey: process.env.GNEWS_API_KEY,
   });
 
@@ -581,42 +976,52 @@ async function getNewsFromGNews() {
 
   return {
     provider: 'GNews',
-    items: relevantNewsItems(data.articles || [], 'gnews'),
+    items: data.articles || [],
   };
 }
 
-async function getNews() {
+async function getNews(page = 1) {
   try {
-    const news = hasConfiguredEnv('NEWS_API_KEY')
-      ? await getNewsFromNewsApi()
-      : hasConfiguredEnv('GNEWS_API_KEY')
-        ? await getNewsFromGNews()
-        : null;
-
-    if (news) {
-      return news.items.length ? news : {
-        provider: news.provider,
-        error: 'No relevant gold market news found for the current query',
-        items: newsFeed,
-      };
-    }
-
-    return {
-      provider: 'sample',
-      items: newsFeed,
-    };
+    const providers = [];
+    if (hasConfiguredEnv('NEWS_API_KEY')) providers.push(getNewsFromNewsApi(page));
+    if (hasConfiguredEnv('GNEWS_API_KEY')) providers.push(getNewsFromGNews(page));
+    if (page === 1) providers.push(getNewsFromGoogleNewsRss(), getNewsFromOfficialFeeds(), getNewsFromGdelt());
+    const results = await Promise.allSettled(providers);
+    const successful = results.filter((result) => result.status === 'fulfilled').map((result) => result.value);
+    const normalized = successful.flatMap((result) => relevantNewsItems(result.items, result.provider.toLowerCase().replace(/\W+/g, '-')));
+    const items = await finalizeNewsItems(normalized);
+    if (items.length) return { provider: successful.map((result) => result.provider).join(' + '), items };
+    return { provider: page === 1 ? 'sample' : 'global', items: page === 1 ? newsFeed : [] };
   } catch (error) {
     return {
       provider: 'sample',
       error: error.message,
-      items: newsFeed,
+      items: page === 1 ? newsFeed : [],
     };
   }
 }
 
+async function getLatestNewsSnapshot(force = false) {
+  if (!force && latestNewsSnapshot && Date.now() - latestNewsSnapshotAt < 30000) return latestNewsSnapshot;
+  latestNewsSnapshot = await getNews(1);
+  latestNewsSnapshotAt = Date.now();
+  return latestNewsSnapshot;
+}
+
+async function broadcastLatestNews() {
+  if (!newsStreamClients.size) return;
+  const news = await getLatestNewsSnapshot(true);
+  const payload = `data: ${JSON.stringify({ ...news, updatedAt: new Date().toISOString() })}\n\n`;
+  newsStreamClients.forEach((client) => client.write(payload));
+}
+
 async function getGoldPrice() {
   if (!hasConfiguredEnv('GOLD_API_KEY')) {
-    return fallbackGoldPrice;
+    try {
+      return normalizeYahooGoldResponse(await fetchYahooGoldChart('day'));
+    } catch (error) {
+      return { ...fallbackGoldPrice, error: error.message };
+    }
   }
 
   try {
@@ -697,6 +1102,13 @@ function indicatorImpact(direction, delta) {
   return delta > 0 ? 'down' : 'up';
 }
 
+function indicatorHistory(series = [], formatter = (value) => value) {
+  return [...series]
+    .reverse()
+    .map((item) => ({ date: item.date, value: formatter(item.value) }))
+    .filter((item) => Number.isFinite(item.value));
+}
+
 function dailyRateIndicator(name, series, direction, summary, related) {
   const [latest, previous] = series;
   const delta = latest.value - previous.value;
@@ -708,6 +1120,7 @@ function dailyRateIndicator(name, series, direction, summary, related) {
     impact: indicatorImpact(direction, delta),
     summary,
     related,
+    history: indicatorHistory(series),
   };
 }
 
@@ -722,6 +1135,7 @@ function dailyValueIndicator(name, series, direction, formatter, summary, relate
     impact: indicatorImpact(direction, delta),
     summary,
     related,
+    history: indicatorHistory(series),
   };
 }
 
@@ -736,6 +1150,7 @@ function periodRateIndicator(name, series, direction, summary, related) {
     impact: indicatorImpact(direction, delta),
     summary,
     related,
+    history: indicatorHistory(series),
   };
 }
 
@@ -757,6 +1172,13 @@ function monthlyYoyIndicator(name, series, summary, related) {
     impact: indicatorImpact('higherHurtsGold', delta),
     summary,
     related,
+    history: series
+      .slice(0, Math.max(0, series.length - 12))
+      .map((item, index) => ({
+        date: item.date,
+        value: pctChange(item.value, series[index + 12].value),
+      }))
+      .reverse(),
   };
 }
 
@@ -786,21 +1208,21 @@ async function getIndicators() {
       retailSales,
       gdp,
     ] = await Promise.all([
-      getFredSeries('DFII10'),
-      getFredSeries('DGS10'),
-      getFredSeries('GFDEGDQ188S', 3),
-      getFredSeries('DTWEXBGS'),
-      getFredSeries('DEXKOUS'),
-      getFredSeries('DCOILWTICO'),
-      getFredSeries('PCEPI', 16),
-      getFredSeries('PCEPILFE', 16),
-      getFredSeries('CPIAUCSL', 16),
-      getFredSeries('CPILFESL', 16),
-      getFredSeries('PAYEMS', 3),
-      getFredSeries('UNRATE', 3),
-      getFredSeries('CES0500000003', 3),
-      getFredSeries('RSAFS', 3),
-      getFredSeries('A191RL1Q225SBEA', 3),
+      getFredSeries('DFII10', 260),
+      getFredSeries('DGS10', 260),
+      getFredSeries('GFDEGDQ188S', 12),
+      getFredSeries('DTWEXBGS', 260),
+      getFredSeries('DEXKOUS', 260),
+      getFredSeries('DCOILWTICO', 260),
+      getFredSeries('PCEPI', 72),
+      getFredSeries('PCEPILFE', 72),
+      getFredSeries('CPIAUCSL', 72),
+      getFredSeries('CPILFESL', 72),
+      getFredSeries('PAYEMS', 24),
+      getFredSeries('UNRATE', 24),
+      getFredSeries('CES0500000003', 24),
+      getFredSeries('RSAFS', 24),
+      getFredSeries('A191RL1Q225SBEA', 12),
     ]);
 
     const payrollDelta = payrolls[0].value - payrolls[1].value;
@@ -833,6 +1255,10 @@ async function getIndicators() {
           impact: payrollDelta < 0 ? 'up' : 'down',
           summary: fallbackIndicators.monthly[4].summary,
           related: fallbackIndicators.monthly[4].related,
+          history: payrolls
+            .slice(0, -1)
+            .map((item, index) => ({ date: item.date, value: item.value - payrolls[index + 1].value }))
+            .reverse(),
         },
         {
           name: '실업률',
@@ -842,6 +1268,7 @@ async function getIndicators() {
           impact: unemploymentDelta >= 0 ? 'up' : 'down',
           summary: fallbackIndicators.monthly[5].summary,
           related: fallbackIndicators.monthly[5].related,
+          history: indicatorHistory(unemployment),
         },
         {
           name: '임금',
@@ -851,6 +1278,10 @@ async function getIndicators() {
           impact: wageDelta >= 0 ? 'down' : 'up',
           summary: fallbackIndicators.monthly[6].summary,
           related: fallbackIndicators.monthly[6].related,
+          history: wages
+            .slice(0, -1)
+            .map((item, index) => ({ date: item.date, value: pctChange(item.value, wages[index + 1].value) }))
+            .reverse(),
         },
         {
           name: '소매판매',
@@ -860,6 +1291,10 @@ async function getIndicators() {
           impact: retailDelta >= 0 ? 'down' : 'up',
           summary: fallbackIndicators.monthly[7].summary,
           related: fallbackIndicators.monthly[7].related,
+          history: retailSales
+            .slice(0, -1)
+            .map((item, index) => ({ date: item.date, value: pctChange(item.value, retailSales[index + 1].value) }))
+            .reverse(),
         },
         {
           name: 'GDP',
@@ -869,6 +1304,7 @@ async function getIndicators() {
           impact: gdpDelta >= 0 ? 'down' : 'up',
           summary: fallbackIndicators.monthly[8].summary,
           related: fallbackIndicators.monthly[8].related,
+          history: indicatorHistory(gdp),
         },
         fallbackIndicators.monthly[9],
       ],
@@ -892,17 +1328,21 @@ function handleRequest(req, res) {
       port,
       services: {
         goldApi: {
-          configured: hasConfiguredEnv('GOLD_API_KEY'),
-          provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : 'sample',
+          configured: true,
+          provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : 'COMEX 금 선물',
           symbol: `${GOLD_API_SYMBOL}/${GOLD_API_CURRENCY}`,
         },
         fred: {
           configured: hasConfiguredEnv('FRED_API_KEY'),
           provider: hasConfiguredEnv('FRED_API_KEY') ? 'FRED' : 'sample',
         },
+        domesticGold: {
+          configured: hasConfiguredEnv('DATA_GO_KR_SERVICE_KEY'),
+          provider: hasConfiguredEnv('DATA_GO_KR_SERVICE_KEY') ? 'KRX 금시장' : 'not configured',
+        },
         news: {
-          configured: hasConfiguredEnv('NEWS_API_KEY') || hasConfiguredEnv('GNEWS_API_KEY'),
-          provider: hasConfiguredEnv('NEWS_API_KEY') ? 'NewsAPI.org' : hasConfiguredEnv('GNEWS_API_KEY') ? 'GNews' : 'sample',
+          configured: true,
+          provider: 'Google News 실시간 + 공식기관 + GDELT + 뉴스 API',
         },
       },
     });
@@ -910,13 +1350,29 @@ function handleRequest(req, res) {
   }
 
   if (url.pathname === '/api/news') {
-    getNews().then((news) => {
+    const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+    getNews(page).then((news) => {
       sendJson(res, {
         updatedAt: new Date().toISOString(),
         query: NEWS_QUERY,
+        page,
+        hasMore: news.provider !== 'sample' && news.items.length > 0,
         ...news,
       });
     });
+    return;
+  }
+
+  if (url.pathname === '/api/news-stream') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+    res.write(': connected\n\n');
+    newsStreamClients.add(res);
+    getLatestNewsSnapshot().then((news) => res.write(`data: ${JSON.stringify({ ...news, updatedAt: new Date().toISOString() })}\n\n`));
+    req.on('close', () => newsStreamClients.delete(res));
     return;
   }
 
@@ -924,10 +1380,30 @@ function handleRequest(req, res) {
     getGoldPrice().then((gold) => {
       sendJson(res, {
         updatedAt: new Date().toISOString(),
-        provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : 'sample',
+        provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : gold.source,
         endpoint: `${GOLD_API_BASE_URL}/:symbol/:currency/:date?`,
         gold,
       });
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/metal-prices/history') {
+    const range = url.searchParams.get('range') || 'day';
+    getGoldHistory(range).then((history) => {
+      sendJson(res, { updatedAt: new Date().toISOString(), ...history });
+    }).catch((error) => {
+      sendJson(res, { error: error.message, history: [] }, 502);
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/domestic-gold') {
+    const range = url.searchParams.get('range') || 'day';
+    getDomesticGold(range).then((gold) => {
+      sendJson(res, { provider: 'KRX 금시장', updatedAt: new Date().toISOString(), gold });
+    }).catch((error) => {
+      sendJson(res, { provider: 'KRX 금시장', error: error.message }, 503);
     });
     return;
   }
@@ -968,6 +1444,8 @@ if (require.main === module) {
   server.listen(port, () => {
     console.log(`Gold Signal is running at http://localhost:${port}`);
   });
+  const newsBroadcastTimer = setInterval(() => broadcastLatestNews().catch(() => {}), 30000);
+  newsBroadcastTimer.unref();
 }
 
 module.exports = handleRequest;

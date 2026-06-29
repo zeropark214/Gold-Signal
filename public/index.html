@@ -88,16 +88,27 @@
         </section>
 
         <section class="view" id="newsView" aria-labelledby="newsTitle">
-          <div class="view-heading">
-            <h2 id="newsTitle" class="sr-only">금 시장 뉴스</h2>
-            <label class="toggle-row">
-              <input id="pushToggle" type="checkbox" checked>
-              <span>중요 뉴스 푸시</span>
-            </label>
+          <h2 id="newsTitle" class="sr-only">금 시장 뉴스</h2>
+          <div class="news-controls-row">
+            <div class="news-filter-row" role="group" aria-label="뉴스 주제 필터">
+              <button class="active" data-news-filter="전체" type="button" aria-pressed="true">전체</button>
+              <button data-news-filter="금리·달러" type="button" aria-pressed="false">금리·달러</button>
+              <button data-news-filter="물가·고용" type="button" aria-pressed="false">물가·고용</button>
+              <button data-news-filter="금 수급" type="button" aria-pressed="false">금 수급</button>
+            </div>
+            <div class="news-alert-toolbar">
+              <label class="news-alert-toggle">
+                <span>중요 뉴스 알림</span>
+                <input id="pushToggle" type="checkbox">
+                <span class="news-alert-switch" aria-hidden="true"></span>
+              </label>
+            </div>
           </div>
           <section class="panel news-feed-panel">
             <div class="news-list simple" id="newsList"></div>
           </section>
+          <div class="news-load-sentinel" id="newsLoadSentinel" aria-live="polite">과거 뉴스 불러오는 중</div>
+          <p class="news-data-meta" id="newsDataMeta">샘플 데이터 · 업데이트 확인 중</p>
         </section>
 
         <section class="view" id="newsDetailView" aria-labelledby="newsDetailTitle">

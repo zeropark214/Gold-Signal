@@ -413,12 +413,25 @@ const state = {
   marketRange: 'day',
   indicatorType: 'daily',
   selectedIndicatorIndex: 0,
+  indicatorRange: 'month',
 };
 
 let indicatorMeta = {
   provider: 'sample',
   updatedAt: null,
 };
+
+let newsMeta = {
+  provider: 'sample',
+  updatedAt: null,
+};
+let newsCurrentPage = 1;
+let newsHasMore = true;
+let newsLoading = false;
+let newsLoadedOnce = false;
+const goldHistoryCache = new Map();
+const domesticGoldHistoryCache = new Map();
+let goldHistoryLoading = false;
 
 const views = {
   dashboard: document.querySelector('#dashboardView'),
@@ -531,10 +544,100 @@ function renderIndicators() {
   document.querySelector('#indicatorDataMeta').textContent = `${provider} · ${updatedAt}`;
 }
 
+const indicatorRangeOptions = {
+  week: { label: '1주', days: 7, sampleCount: 8 },
+  month: { label: '1개월', days: 31, sampleCount: 20 },
+  year: { label: '1년', days: 366, sampleCount: 28 },
+};
+
+function indicatorNumericValue(item) {
+  return Number(String(item.value).replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function formatIndicatorChartValue(item, value) {
+  if (item.value.includes('원')) return `${Math.round(value).toLocaleString('ko-KR')}원`;
+  if (item.value.includes('$')) return `$${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  if (item.value.includes('%')) return `${value.toFixed(2)}%`;
+  if (item.value.includes('K')) return `${value.toFixed(0)}K`;
+  if (item.value.includes('M')) return `${value.toFixed(0)}M`;
+  return value.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+}
+
+function indicatorChartSeries(item, range, indicatorIndex) {
+  const config = indicatorRangeOptions[range];
+  const history = Array.isArray(item.history)
+    ? item.history
+      .map((point) => ({ date: point.date, value: Number(point.value) }))
+      .filter((point) => point.date && Number.isFinite(point.value))
+    : [];
+
+  if (history.length >= 2) {
+    const newest = new Date(history[history.length - 1].date).getTime();
+    const cutoff = newest - config.days * 24 * 60 * 60 * 1000;
+    const filtered = history.filter((point) => new Date(point.date).getTime() >= cutoff);
+    return { points: filtered.length >= 2 ? filtered : history, isSample: false };
+  }
+
+  const current = indicatorNumericValue(item);
+  const direction = String(item.change).trim().startsWith('-') ? -1 : 1;
+  const amplitude = range === 'week' ? 0.008 : range === 'month' ? 0.025 : 0.08;
+  const today = new Date();
+  const points = Array.from({ length: config.sampleCount }, (_, index) => {
+    const progress = index / (config.sampleCount - 1);
+    const wave = Math.sin((index + indicatorIndex * 1.3) * 0.9) * amplitude * 0.35;
+    const drift = direction * amplitude * (progress - 1) * 0.55;
+    const date = new Date(today);
+    date.setDate(today.getDate() - Math.round(config.days * (1 - progress)));
+    return {
+      date: date.toISOString().slice(0, 10),
+      value: index === config.sampleCount - 1 ? current : current * (1 + wave + drift),
+    };
+  });
+  return { points, isSample: true };
+}
+
+function indicatorHistoryChart(item, range, indicatorIndex) {
+  const series = indicatorChartSeries(item, range, indicatorIndex);
+  const values = series.points.map((point) => point.value);
+  const width = 700;
+  const height = 320;
+  const plot = { left: 26, right: 610, top: 28, bottom: 244 };
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const padding = Math.max((maximum - minimum) * 0.14, Math.abs(maximum) * 0.001, 0.01);
+  const scaleMin = minimum - padding;
+  const scaleMax = maximum + padding;
+  const xFor = (index) => plot.left + (index / (values.length - 1)) * (plot.right - plot.left);
+  const yFor = (value) => plot.bottom - ((value - scaleMin) / (scaleMax - scaleMin)) * (plot.bottom - plot.top);
+  const path = values.map((value, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(1)} ${yFor(value).toFixed(1)}`).join(' ');
+  const gridValues = [scaleMax, (scaleMax + scaleMin) / 2, scaleMin];
+  const startDate = new Date(series.points[0].date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  const endDate = new Date(series.points[series.points.length - 1].date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  const current = values[values.length - 1];
+
+  return {
+    isSample: series.isSample,
+    markup: `
+      <svg class="indicator-history-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${item.name} ${indicatorRangeOptions[range].label} 추이">
+        ${gridValues.map((value) => `
+          <line class="indicator-history-grid" x1="${plot.left}" y1="${yFor(value)}" x2="${plot.right}" y2="${yFor(value)}" />
+          <text class="indicator-history-label" x="680" y="${yFor(value) + 5}" text-anchor="end">${formatIndicatorChartValue(item, value)}</text>
+        `).join('')}
+        <path class="indicator-history-line" d="${path}" />
+        <circle class="indicator-history-current" cx="${xFor(values.length - 1)}" cy="${yFor(current)}" r="7" />
+        <text class="indicator-history-current-label" x="${plot.right - 10}" y="${Math.max(18, yFor(current) - 16)}" text-anchor="end">현재 ${formatIndicatorChartValue(item, current)}</text>
+        <text class="indicator-history-label" x="${plot.left}" y="292" text-anchor="start">${startDate}</text>
+        <text class="indicator-history-label" x="${plot.right}" y="292" text-anchor="end">${endDate}</text>
+      </svg>
+    `,
+  };
+}
+
 function renderIndicatorDetail() {
   const indicators = state.indicatorType === 'daily' ? dailyIndicators : monthlyIndicators;
   const item = indicators[state.selectedIndicatorIndex] || indicators[0];
   if (!item) return;
+  const chart = indicatorHistoryChart(item, state.indicatorRange, state.selectedIndicatorIndex);
 
   document.querySelector('#indicatorDetailTitle').textContent = item.name;
   document.querySelector('#indicatorDetailContent').innerHTML = `
@@ -545,6 +648,19 @@ function renderIndicatorDetail() {
       </div>
       <span class="${impactClass(item.impact)}">${impactText(item.impact)}</span>
     </header>
+    <section class="indicator-chart-section" aria-labelledby="indicatorChartTitle">
+      <div class="indicator-chart-heading">
+        <h3 id="indicatorChartTitle">지표 추이</h3>
+        <span class="gold-data-status">${chart.isSample ? '샘플 차트' : '실제 데이터'}</span>
+      </div>
+      <div class="indicator-range-control" role="group" aria-label="차트 기간 선택">
+        ${Object.entries(indicatorRangeOptions).map(([key, option]) => `
+          <button class="${state.indicatorRange === key ? 'active' : ''}" data-indicator-range="${key}" type="button" aria-pressed="${state.indicatorRange === key}">${option.label}</button>
+        `).join('')}
+      </div>
+      <div class="indicator-chart-panel">${chart.markup}</div>
+      ${chart.isSample ? '<p class="indicator-chart-note">현재 차트는 화면 확인용 샘플입니다. 실제 투자 판단에는 사용하지 마세요.</p>' : ''}
+    </section>
     <section class="indicator-explanation" aria-labelledby="indicatorExplanationTitle">
       <h3 id="indicatorExplanationTitle">금 가격에는 어떤 의미인가요?</h3>
       <p>${item.summary}</p>
@@ -741,6 +857,12 @@ function formatMarketValue(item, value) {
 }
 
 function marketHistory(item, range, marketIndex) {
+  if (marketIndex === 0 && goldHistoryCache.has(range)) {
+    return goldHistoryCache.get(range).map((point) => point.value);
+  }
+  if (marketIndex === 1 && domesticGoldHistoryCache.has(range)) {
+    return domesticGoldHistoryCache.get(range).map((point) => point.value);
+  }
   const config = marketRangeOptions[range];
   const current = marketNumericValue(item);
   const direction = item.trend === 'down' ? -1 : 1;
@@ -811,7 +933,7 @@ function renderMarketDetail() {
         <strong>${item.value}</strong>
         <p class="market-detail-change ${changeClass}">${marketRangeOptions[state.marketRange].label}간 ${Math.abs(chart.changePercent).toFixed(2)}% ${changeDirection}</p>
       </div>
-      <span class="gold-data-status">샘플 시계열</span>
+      <span class="gold-data-status">${(state.selectedMarketIndex === 0 && goldHistoryCache.has(state.marketRange)) || (state.selectedMarketIndex === 1 && domesticGoldHistoryCache.has(state.marketRange)) ? '실제 데이터' : goldHistoryLoading ? '불러오는 중' : '샘플 시계열'}</span>
     </header>
     <div class="market-range-control" role="group" aria-label="차트 기간 선택">
       ${Object.entries(marketRangeOptions).map(([key, option]) => `
@@ -827,8 +949,72 @@ function renderMarketDetail() {
       <div><dt>기간 최저</dt><dd>${formatMarketValue(item, chart.minimum)}</dd></div>
       <div><dt>현재 가격</dt><dd>${item.value}</dd></div>
     </dl>
-    <p class="market-detail-note">현재 기간별 차트는 샘플 데이터입니다. 실제 투자 판단에는 사용하지 마세요.</p>
+    ${state.selectedMarketIndex === 0 && goldHistoryCache.has(state.marketRange)
+      ? '<p class="market-detail-note">COMEX 금 선물 시세 기준이며 거래소 상황에 따라 지연될 수 있습니다.</p>'
+      : state.selectedMarketIndex === 1 && domesticGoldHistoryCache.has(state.marketRange)
+        ? '<p class="market-detail-note">KRX 금시장 99.99_1kg 종가 기준이며 영업일 다음 날 갱신됩니다.</p>'
+      : '<p class="market-detail-note">현재 기간별 차트는 샘플 데이터입니다. 실제 투자 판단에는 사용하지 마세요.</p>'}
   `;
+}
+
+function normalizeDomesticGoldPrice(gold) {
+  const changePercent = Number(gold.changePercent || 0);
+  return {
+    name: '국내 금값',
+    value: `${Number(gold.price).toLocaleString('ko-KR')}원/g`,
+    change: `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%`,
+    trend: changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'neutral',
+    details: ['KRX 금시장 기준', '1g당 가격'],
+    points: (gold.history || []).slice(-7).map((point) => Number(point.value)),
+    marketStats: {
+      open: gold.open,
+      low: gold.low,
+      high: gold.high,
+      previousClose: gold.previousClose,
+      volume: gold.volume,
+      updatedAt: gold.updatedAt,
+      isFallback: false,
+    },
+  };
+}
+
+async function loadDomesticGold(range = 'day', { updateCard = false } = {}) {
+  try {
+    const response = await fetch(`/api/domestic-gold?range=${encodeURIComponent(range)}`);
+    if (!response.ok) throw new Error('국내 금값 API 응답 실패');
+    const data = await response.json();
+    const history = (data.gold?.history || []).filter((point) => Number.isFinite(Number(point.value)));
+    if (history.length) domesticGoldHistoryCache.set(range, history);
+    if (updateCard) {
+      marketPrices[1] = normalizeDomesticGoldPrice(data.gold);
+      renderMarketBoard();
+    }
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function loadGoldHistory(range = state.marketRange, { force = false } = {}) {
+  if ((!force && goldHistoryCache.has(range)) || goldHistoryLoading) {
+    renderMarketDetail();
+    return;
+  }
+  goldHistoryLoading = true;
+  renderMarketDetail();
+  try {
+    const response = await fetch(`/api/metal-prices/history?range=${encodeURIComponent(range)}`);
+    if (!response.ok) throw new Error('금값 시계열 응답 실패');
+    const data = await response.json();
+    const history = (data.history || []).filter((point) => Number.isFinite(Number(point.value)));
+    if (history.length < 2) throw new Error('금값 시계열 부족');
+    goldHistoryCache.set(range, history);
+  } catch (error) {
+    showToast('실제 차트를 불러오지 못해 샘플 추이를 표시합니다.');
+  } finally {
+    goldHistoryLoading = false;
+    renderMarketDetail();
+  }
 }
 
 function renderDashboard() {
@@ -874,7 +1060,10 @@ function normalizeGoldMarketPrice(gold) {
 
 async function loadMetalPrices() {
   try {
-    const response = await fetch('/api/metal-prices');
+    const [response] = await Promise.all([
+      fetch('/api/metal-prices'),
+      loadDomesticGold('day', { updateCard: true }),
+    ]);
     if (!response.ok) throw new Error('금값 API 응답 실패');
     const data = await response.json();
     const goldPrice = normalizeGoldMarketPrice(data.gold);
@@ -895,10 +1084,11 @@ function relativeTime(isoDate) {
 }
 
 function normalizeNewsItem(item, index = 0) {
+  const titleOriginal = item.titleOriginal || item.original || item.title || '제목 확인 중';
   return {
     id: item.id || `news-${index}`,
-    titleKo: item.titleKo || item.title || item.titleOriginal,
-    titleOriginal: item.titleOriginal || item.original || item.title,
+    titleKo: item.titleKo || titleOriginal,
+    titleOriginal,
     source: item.source || 'Unknown',
     publishedAt: item.publishedAt || new Date().toISOString(),
     url: item.url || '#',
@@ -907,36 +1097,80 @@ function normalizeNewsItem(item, index = 0) {
     impactScore: Number(item.impactScore || 0),
     relatedAssets: item.relatedAssets || item.assets || [],
     highlights: item.highlights || [],
-    summaryKo: item.summaryKo || item.summary || '요약이 준비 중입니다.',
+    summaryKo: item.summaryKo || item.summaryOriginal || item.summary || '원문에서 세부 내용을 확인할 수 있습니다.',
+    summaryOriginal: item.summaryOriginal || item.summary || '',
     duplicateCount: item.duplicateCount || 1,
+    clusterSources: item.clusterSources || [item.source || 'Unknown'],
+    translationAvailable: Boolean(item.translationAvailable),
+    sourceType: item.sourceType || 'media',
+    country: item.country || '',
   };
 }
 
-function newsTemplate(item, index = 0) {
+function newsMatchesFilter(item, filter) {
+  if (filter === '전체') return true;
+  const tags = item.tags.join(' ');
+  if (filter === '금리·달러') return /(금리|연준|국채|달러|DXY)/i.test(tags);
+  if (filter === '물가·고용') return /(물가|인플레이션|PCE|CPI|고용|실업|임금)/i.test(tags);
+  return /(중앙은행|ETF|금 매입|금 시장|수급)/i.test(tags);
+}
+
+function visibleNewsItems() {
+  return newsItems.filter((item) => newsMatchesFilter(item, state.newsFilter));
+}
+
+function newsTemplate(item) {
   return `
     <button class="news-row ${item.id === state.selectedNewsId ? 'active' : ''}" data-news-id="${item.id}" type="button">
+      <span class="news-list-meta"><strong>${item.priority}</strong> · ${relativeTime(item.publishedAt)} · ${item.source}</span>
       <span class="news-title">${item.titleKo}</span>
-      <span class="meta">${item.source} · ${relativeTime(item.publishedAt)} · ${item.priority} · 영향 ${item.impactScore}</span>
+      <span class="news-list-footer">
+        <span>${item.tags.slice(0, 3).join(' · ') || '금 시장'}</span>
+        ${item.duplicateCount > 1 ? `<em>${item.duplicateCount}개 매체 보도</em>` : ''}
+      </span>
     </button>
   `;
 }
 
 function renderNews() {
-  document.querySelector('#newsList').innerHTML = newsItems.map(newsTemplate).join('');
+  const visibleItems = visibleNewsItems();
+  document.querySelector('#newsList').innerHTML = visibleItems.length
+    ? visibleItems.map(newsTemplate).join('')
+    : '<p class="news-empty-state">해당 주제의 뉴스가 아직 없습니다.</p>';
+  document.querySelectorAll('[data-news-filter]').forEach((button) => {
+    const isActive = button.dataset.newsFilter === state.newsFilter;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+  const provider = newsMeta.provider === 'sample' ? '샘플 데이터' : newsMeta.provider;
+  const updatedAt = newsMeta.updatedAt
+    ? new Date(newsMeta.updatedAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '업데이트 확인 중';
+  document.querySelector('#newsDataMeta').textContent = `${provider} · ${updatedAt}`;
+  const sentinel = document.querySelector('#newsLoadSentinel');
+  sentinel.textContent = newsLoading
+    ? '과거 뉴스 불러오는 중'
+    : newsHasMore
+      ? '아래로 스크롤하면 과거 뉴스를 불러옵니다'
+      : '불러온 뉴스를 모두 확인했습니다';
+  sentinel.classList.toggle('is-complete', !newsHasMore);
 }
 
 function renderNewsDetail() {
   const item = newsItems.find((news) => news.id === state.selectedNewsId) || newsItems[0];
   if (!item) return;
+  const relatedNews = newsItems
+    .filter((news) => news.id !== item.id && news.tags.some((tag) => item.tags.includes(tag)))
+    .slice(0, 3);
 
   document.querySelector('#newsDetailPanel').innerHTML = `
     <div class="news-detail-stack">
       <div class="news-priority-row">
         <span class="tag">${item.priority}</span>
-        <span class="meta">${item.source} · ${relativeTime(item.publishedAt)} · 영향 ${item.impactScore}</span>
+        <span class="meta">${item.source} · ${relativeTime(item.publishedAt)}</span>
       </div>
       <h3>${item.titleKo}</h3>
-      <p class="news-original">${item.titleOriginal}</p>
+      ${item.translationAvailable && item.titleKo !== item.titleOriginal ? `<p class="news-original">${item.titleOriginal}</p>` : ''}
       <p>${item.summaryKo}</p>
       <div class="news-tag-list">
         ${item.tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}
@@ -946,32 +1180,75 @@ function renderNewsDetail() {
           <span class="section-label">관련 자산</span>
           <strong>${item.relatedAssets.join(', ') || '확인 중'}</strong>
         </div>
-        <div>
-          <span class="section-label">중복 묶음</span>
-          <strong>${item.duplicateCount}건</strong>
-        </div>
+        ${item.duplicateCount > 1 ? `<div><span class="section-label">같은 내용 보도</span><strong>${item.clusterSources.join(', ')}</strong></div>` : ''}
       </div>
       <ul class="news-highlight-list">
         ${item.highlights.map((highlight) => `<li>${highlight}</li>`).join('')}
       </ul>
-      <button class="secondary-button news-source-button" id="newsSourceButton" type="button">원문 보기</button>
+      <div class="news-detail-actions">
+        <button class="primary-button" id="newsSourceButton" type="button">원문 보기</button>
+        <button class="secondary-button" id="newsIndicatorButton" type="button">관련 지표 보기</button>
+        <button class="secondary-button" id="newsCommunityButton" type="button">커뮤니티 반응 보기</button>
+      </div>
+      ${relatedNews.length ? `
+        <section class="related-news-section" aria-labelledby="relatedNewsTitle">
+          <h4 id="relatedNewsTitle">같은 주제 뉴스</h4>
+          <div class="related-news-list">
+            ${relatedNews.map((news) => `<button data-related-news-id="${news.id}" type="button"><span>${news.titleKo}</span><em>${relativeTime(news.publishedAt)}</em></button>`).join('')}
+          </div>
+        </section>
+      ` : ''}
     </div>
   `;
 }
 
-async function loadNews() {
+function notifyNewImportantNews(previousIds) {
+  if (localStorage.getItem('goldSignalNewsNotifications') !== 'on' || Notification.permission !== 'granted') return;
+  newsItems
+    .filter((item) => !previousIds.has(item.id) && item.priority !== '일반')
+    .slice(0, 3)
+    .forEach((item) => new Notification(`Gold Signal · ${item.priority}`, {
+      body: item.titleKo,
+      tag: item.id,
+    }));
+}
+
+async function loadNews({ notify = false, append = false, page = 1 } = {}) {
+  if (newsLoading) return;
+  newsLoading = true;
+  renderNews();
+  const previousIds = new Set(newsItems.map((item) => item.id));
   try {
-    const response = await fetch('/api/news');
+    const response = await fetch(`/api/news?page=${page}`);
     if (!response.ok) throw new Error('뉴스 API 응답 실패');
     const data = await response.json();
-    newsItems = (data.items || []).map(normalizeNewsItem);
+    const incomingItems = (data.items || []).map(normalizeNewsItem);
+    const combinedItems = append
+      ? [...newsItems, ...incomingItems]
+      : newsLoadedOnce
+        ? [...incomingItems, ...newsItems]
+        : incomingItems;
+    newsItems = [...new Map(combinedItems.map((item) => [item.id, item])).values()];
+    newsMeta = {
+      provider: data.provider || 'sample',
+      updatedAt: data.updatedAt || new Date().toISOString(),
+    };
+    newsHasMore = Boolean(data.hasMore && incomingItems.length);
+    if (append) newsCurrentPage = page;
+    newsLoadedOnce = true;
     state.selectedNewsId = newsItems[0]?.id || state.selectedNewsId;
   } catch (error) {
-    newsItems = newsItems.map(normalizeNewsItem);
-    showToast('뉴스 API 연결 전이라 샘플 뉴스를 표시합니다.');
+    if (!append) {
+      newsItems = newsItems.map(normalizeNewsItem);
+      showToast('뉴스 API 연결 전이라 샘플 뉴스를 표시합니다.');
+    }
+    if (append) newsHasMore = false;
+  } finally {
+    newsLoading = false;
   }
 
   renderNews();
+  if (notify && 'Notification' in window) notifyNewImportantNews(previousIds);
 }
 
 function postTemplate(item, index = 0) {
@@ -1126,6 +1403,8 @@ document.body.addEventListener('click', (event) => {
     state.marketRange = 'day';
     renderMarketDetail();
     setView('marketDetail');
+    if (state.selectedMarketIndex === 0) loadGoldHistory('day');
+    if (state.selectedMarketIndex === 1) loadDomesticGold('day').then(() => renderMarketDetail());
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
@@ -1133,7 +1412,9 @@ document.body.addEventListener('click', (event) => {
   const rangeButton = event.target.closest('[data-market-range]');
   if (rangeButton) {
     state.marketRange = rangeButton.dataset.marketRange;
-    renderMarketDetail();
+    if (state.selectedMarketIndex === 0) loadGoldHistory(state.marketRange);
+    else if (state.selectedMarketIndex === 1) loadDomesticGold(state.marketRange).then(() => renderMarketDetail());
+    else renderMarketDetail();
   }
 });
 
@@ -1153,9 +1434,17 @@ document.body.addEventListener('click', (event) => {
   if (indicatorButton) {
     state.indicatorType = indicatorButton.dataset.indicatorGroup;
     state.selectedIndicatorIndex = Number(indicatorButton.dataset.indicatorIndex);
+    state.indicatorRange = 'month';
     renderIndicatorDetail();
     setView('indicatorDetail');
     window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+
+  const indicatorRangeButton = event.target.closest('[data-indicator-range]');
+  if (indicatorRangeButton) {
+    state.indicatorRange = indicatorRangeButton.dataset.indicatorRange;
+    renderIndicatorDetail();
   }
 });
 
@@ -1171,6 +1460,19 @@ document.body.addEventListener('click', (event) => {
     renderNews();
     renderNewsDetail();
     setView('newsDetail');
+  }
+
+  const filterButton = event.target.closest('[data-news-filter]');
+  if (filterButton) {
+    state.newsFilter = filterButton.dataset.newsFilter;
+    renderNews();
+  }
+
+  const relatedNewsButton = event.target.closest('[data-related-news-id]');
+  if (relatedNewsButton) {
+    state.selectedNewsId = relatedNewsButton.dataset.relatedNewsId;
+    renderNewsDetail();
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
   const likeButton = event.target.closest('[data-like-post]');
@@ -1246,8 +1548,31 @@ document.body.addEventListener('submit', (event) => {
   }
 });
 
-document.querySelector('#pushToggle').addEventListener('change', (event) => {
-  showToast(event.target.checked ? '중요 뉴스 푸시를 켰습니다.' : '중요 뉴스 푸시를 껐습니다.');
+document.querySelector('#pushToggle').addEventListener('change', async (event) => {
+  if (!event.target.checked) {
+    localStorage.setItem('goldSignalNewsNotifications', 'off');
+    showToast('중요 뉴스 알림을 껐습니다.');
+    return;
+  }
+
+  if (!('Notification' in window)) {
+    event.target.checked = false;
+    showToast('이 브라우저에서는 알림을 지원하지 않습니다.');
+    return;
+  }
+
+  const permission = Notification.permission === 'default'
+    ? await Notification.requestPermission()
+    : Notification.permission;
+  if (permission !== 'granted') {
+    event.target.checked = false;
+    localStorage.setItem('goldSignalNewsNotifications', 'off');
+    showToast('브라우저에서 알림 권한을 허용해주세요.');
+    return;
+  }
+
+  localStorage.setItem('goldSignalNewsNotifications', 'on');
+  showToast('앱을 열어둔 동안 중요 뉴스 알림을 받습니다.');
 });
 
 document.querySelector('#newsBackButton').addEventListener('click', () => {
@@ -1256,13 +1581,26 @@ document.querySelector('#newsBackButton').addEventListener('click', () => {
 
 document.body.addEventListener('click', (event) => {
   const sourceButton = event.target.closest('#newsSourceButton');
-  if (!sourceButton) return;
-  const item = newsItems.find((news) => news.id === state.selectedNewsId);
-  if (!item?.url || item.url === '#') {
-    showToast('뉴스 원문을 열 수 없습니다.');
+  if (sourceButton) {
+    const item = newsItems.find((news) => news.id === state.selectedNewsId);
+    if (!item?.url || item.url === '#') {
+      showToast('뉴스 원문을 열 수 없습니다.');
+      return;
+    }
+    window.open(item.url, '_blank', 'noopener');
     return;
   }
-  window.open(item.url, '_blank', 'noopener');
+
+  if (event.target.closest('#newsIndicatorButton')) {
+    state.indicatorType = 'daily';
+    renderIndicators();
+    setView('indicators');
+    return;
+  }
+
+  if (event.target.closest('#newsCommunityButton')) {
+    setView('community');
+  }
 });
 
 document.querySelector('#sortToggleButton').addEventListener('click', () => {
@@ -1397,7 +1735,44 @@ document.querySelector('#postForm').addEventListener('submit', (event) => {
   showToast('게시글이 등록되었습니다.');
 });
 
+const savedNewsNotificationSetting = localStorage.getItem('goldSignalNewsNotifications');
+document.querySelector('#pushToggle').checked = savedNewsNotificationSetting === 'on'
+  && 'Notification' in window
+  && Notification.permission === 'granted';
+
 renderAll();
 loadIndicators();
 loadMetalPrices();
 loadNews();
+window.setInterval(() => {
+  loadMetalPrices();
+  if (state.view === 'marketDetail' && state.selectedMarketIndex === 0 && state.marketRange === 'day') {
+    loadGoldHistory('day', { force: true });
+  }
+}, 60 * 1000);
+window.setInterval(() => loadNews({ notify: true }), 60 * 1000);
+
+if ('EventSource' in window) {
+  const newsStream = new EventSource('/api/news-stream');
+  newsStream.onmessage = (event) => {
+    const previousIds = new Set(newsItems.map((item) => item.id));
+    try {
+      const data = JSON.parse(event.data);
+      const incomingItems = (data.items || []).map(normalizeNewsItem);
+      newsItems = [...new Map([...incomingItems, ...newsItems].map((item) => [item.id, item])).values()];
+      newsMeta = { provider: data.provider || newsMeta.provider, updatedAt: data.updatedAt || new Date().toISOString() };
+      renderNews();
+      if ('Notification' in window) notifyNewImportantNews(previousIds);
+    } catch (error) {
+      // The periodic HTTP refresh remains available if a stream event is malformed.
+    }
+  };
+}
+
+if ('IntersectionObserver' in window) {
+  const newsObserver = new IntersectionObserver((entries) => {
+    if (!entries[0].isIntersecting || state.view !== 'news' || !newsHasMore || newsLoading) return;
+    loadNews({ append: true, page: newsCurrentPage + 1 });
+  }, { rootMargin: '240px 0px' });
+  newsObserver.observe(document.querySelector('#newsLoadSentinel'));
+}

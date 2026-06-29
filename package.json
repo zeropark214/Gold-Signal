@@ -6,8 +6,15 @@
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": ["gold", "investment", "news", "community"],
+  "keywords": [
+    "gold",
+    "investment",
+    "news",
+    "community"
+  ],
   "author": "",
   "license": "MIT",
-  "dependencies": {}
+  "dependencies": {
+    "fast-xml-parser": "^5.9.3"
+  }
 }
