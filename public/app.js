@@ -45,7 +45,7 @@ let dailyIndicators = [
     related: 'DXY, 국내 금 가격',
   },
   {
-    name: '유가',
+    name: 'WTI 원유',
     value: '$78.60',
     compare: 'WTI 전일 $77.90',
     change: '+0.90%',
@@ -326,68 +326,52 @@ let newsItems = [
   },
 ];
 
-const rooms = [
-  { name: '전체', count: 418 },
-  { name: '실시간 시황', count: 128 },
-  { name: '금 현물', count: 76 },
-  { name: '금 ETF', count: 96 },
-  { name: '금 선물', count: 42 },
-  { name: '금 관련주', count: 53 },
-  { name: '경제 지표 토론', count: 72 },
-  { name: '뉴스 토론', count: 84 },
-  { name: '질문', count: 39 },
-  { name: '장기투자', count: 61 },
-];
-
 let posts = [
   {
     id: 1,
     title: '오늘 CPI 이후 금 어떻게 보시나요?',
-    body: 'CPI가 예상보다 높게 나오면 단기 조정 가능성을 보고 있습니다. 다만 ETF 흐름은 좋아 보여서 분할 접근이 나을까요?',
-    room: '경제 지표 토론',
+    body: 'CPI가 예상보다 높게 나오면 단기 조정 가능성을 보고 있습니다. 다만 GLD ETF 가격 흐름도 같이 보면서 분할 접근이 나을지 고민 중입니다.',
     author: 'cpi_watch',
     badge: '경제 지표 관심',
     avatar: 'C',
-    time: '방금 전',
+    createdAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
     comments: 12,
     likes: 24,
     hot: 92,
     commentItems: [
-      { author: 'macro_watch', time: '방금 전', body: '예상 상회면 단기 조정은 열어둬야 할 것 같습니다.' },
-      { author: 'etf_user', time: '3분 전', body: '저는 ETF 흐름이 꺾이는지도 같이 보려고요.' },
+      { author: 'macro_watch', createdAt: new Date(Date.now() - 4 * 60 * 1000).toISOString(), body: '예상 상회면 단기 조정은 열어둬야 할 것 같습니다.' },
+      { author: 'etf_user', createdAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(), body: '저는 GLD 가격이 꺾이는지도 같이 보려고요.' },
     ],
   },
   {
     id: 2,
     title: '금 ETF랑 실물 금 중 뭐가 나을까요?',
     body: '장기 보유 목적이면 ETF 수수료와 실물 보관 비용을 같이 봐야 할 것 같습니다.',
-    room: '금 ETF',
     author: 'etf_user',
     badge: 'ETF 투자자',
     avatar: 'E',
-    time: '15분 전',
+    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
     comments: 8,
     likes: 10,
     hot: 61,
     commentItems: [
-      { author: 'long_gold', time: '10분 전', body: '환금성은 ETF가 편하고, 실물은 보관 비용을 꼭 봐야 합니다.' },
+      { author: 'long_gold', createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), body: '환금성은 ETF가 편하고, 실물은 보관 비용을 꼭 봐야 합니다.' },
     ],
   },
   {
     id: 3,
     title: '실질금리 상승인데 중앙은행 매입은 계속 강하네요',
     body: '단기 가격과 장기 수급이 반대로 움직이는 구간이라 해석이 어렵습니다.',
-    room: '실시간 시황',
     author: 'macro_watch',
     badge: '활발한 참여자',
     avatar: 'M',
-    time: '34분 전',
+    createdAt: new Date(Date.now() - 34 * 60 * 1000).toISOString(),
     comments: 19,
     likes: 31,
     hot: 110,
     commentItems: [
-      { author: 'long_gold', time: '12분 전', body: '단기 매크로랑 장기 수급을 분리해서 보는 게 낫다고 봅니다.' },
-      { author: 'macro_watch', time: '28분 전', body: '실질금리 둔화 신호가 나오면 반응이 빨라질 수 있어요.' },
+      { author: 'long_gold', createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(), body: '단기 매크로랑 장기 수급을 분리해서 보는 게 낫다고 봅니다.' },
+      { author: 'macro_watch', createdAt: new Date(Date.now() - 28 * 60 * 1000).toISOString(), body: '실질금리 둔화 신호가 나오면 반응이 빨라질 수 있어요.' },
     ],
   },
 ];
@@ -406,7 +390,6 @@ const state = {
   selectedNews: 0,
   selectedNewsId: newsItems[0].id,
   postSort: 'latest',
-  selectedRoom: '전체',
   expandedPostId: posts[0].id,
   likedPostIds: new Set(),
   selectedMarketIndex: 0,
@@ -447,7 +430,7 @@ const views = {
 };
 
 const pageTitles = {
-  dashboard: '대시보드',
+  dashboard: '실시간 시세',
   marketDetail: '시세 상세',
   indicators: '경제 지표',
   indicatorDetail: '지표 상세',
@@ -953,6 +936,9 @@ function renderMarketDetail() {
         : hasActualHistory
           ? '실제 시장 데이터 기반 차트이며 거래소와 데이터 제공처 상황에 따라 지연될 수 있습니다.'
           : '현재 기간별 차트는 샘플 데이터입니다. 실제 투자 판단에는 사용하지 마세요.');
+  const donPriceMarkup = item.marketStats?.donPrice
+    ? `<div><dt>1돈(3.75g)</dt><dd>${Number(item.marketStats.donPrice).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}원</dd></div>`
+    : '';
 
   document.querySelector('#marketDetailTitle').textContent = item.name;
   document.querySelector('#marketDetailContent').innerHTML = `
@@ -977,6 +963,7 @@ function renderMarketDetail() {
       <div><dt>기간 최고</dt><dd>${formatMarketValue(item, chart.maximum)}</dd></div>
       <div><dt>기간 최저</dt><dd>${formatMarketValue(item, chart.minimum)}</dd></div>
       <div><dt>현재 가격</dt><dd>${item.value}</dd></div>
+      ${donPriceMarkup}
     </dl>
     <p class="market-detail-note">${marketNote}</p>
   `;
@@ -997,6 +984,7 @@ function normalizeDomesticGoldPrice(gold) {
       high: gold.high,
       previousClose: gold.previousClose,
       volume: gold.volume,
+      donPrice: Number(gold.price) * 3.75,
       updatedAt: gold.updatedAt,
       isFallback: false,
     },
@@ -1046,13 +1034,11 @@ function normalizeDomesticSilverPrice(silver) {
     value: `${Math.round(price).toLocaleString('ko-KR')}원/g`,
     change: signedPercent(changePercent),
     trend: trendFromNumber(changePercent),
-    details: [
-      '한국금거래소 기준',
-      silver.sellPrice3_75g ? `3.75g ${Number(silver.sellPrice3_75g).toLocaleString('ko-KR')}원` : 'Silver-3.75g 판매가',
-    ],
+    details: ['한국금거래소 기준', '1g당 가격'],
     points: (silver.history || []).slice(-7).map((point) => Number(point.value)),
     marketStats: {
       previousClose,
+      donPrice: silver.sellPrice3_75g || price * 3.75,
       updatedAt: silver.updatedAt,
       isFallback: false,
       note: '한국금거래소 Silver-3.75g 판매가를 1g 기준으로 환산해 표시합니다.',
@@ -1168,6 +1154,30 @@ async function loadMarketActualHistory(index, range = state.marketRange) {
 
 function renderDashboard() {
   renderMarketBoard();
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+function formatRelativeTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '방금 전';
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return '방금 전';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}일 전`;
+  return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
 }
 
 function formatUsd(value, digits = 2) {
@@ -1437,35 +1447,38 @@ async function loadNews({ notify = false, append = false, page = 1 } = {}) {
 function postTemplate(item, index = 0) {
   const isExpanded = state.expandedPostId === item.id;
   const isLiked = state.likedPostIds.has(item.id);
+  const comments = Array.isArray(item.commentItems) ? item.commentItems : [];
+  const commentCount = Number(item.comments ?? comments.length);
+  const preview = item.body.length > 74 ? `${item.body.slice(0, 74)}...` : item.body;
   return `
     <article class="post-row community-post ${isExpanded ? 'expanded' : ''}" data-post-id="${item.id}">
       <div class="community-post-header">
         <div class="post-avatar" aria-hidden="true">${avatarMarkup(item.avatar || 'G', item.avatarImage || '')}</div>
         <div>
-          <span class="post-author">${item.author}</span>
-          <span class="post-meta">${item.time} · ${item.room} <span class="badge">${item.badge}</span></span>
+          <span class="post-author">${escapeHtml(item.author)}</span>
+          <span class="post-meta">${formatRelativeTime(item.createdAt)} <span class="badge">${escapeHtml(item.badge || '금 투자자')}</span></span>
         </div>
       </div>
-      <p class="community-post-text">${item.title}</p>
-      ${isExpanded ? `<p class="meta">${item.body}</p>` : ''}
+      <div class="community-post-copy">
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(isExpanded ? item.body : preview)}</p>
+      </div>
       <div class="post-actions community-actions">
-        <button class="icon-action count-action ${isLiked ? 'active' : ''}" data-like-post="${item.id}" type="button" aria-label="공감 ${item.likes}"><span aria-hidden="true">♡</span><strong>${item.likes}</strong></button>
-        <button class="icon-action count-action" data-comment-post="${item.id}" type="button" aria-label="댓글 ${item.comments}"><span aria-hidden="true">◯</span><strong>${item.comments}</strong></button>
-        <button class="icon-action more-action" data-report-post="${item.id}" type="button" aria-label="더보기">…</button>
+        <button class="icon-action count-action ${isLiked ? 'active' : ''}" data-like-post="${item.id}" type="button" aria-label="공감 ${item.likes}"><span aria-hidden="true">♡</span><strong>공감 ${item.likes}</strong></button>
+        <button class="icon-action count-action" data-comment-post="${item.id}" type="button" aria-label="댓글 ${commentCount}개 보기"><span aria-hidden="true">◯</span><strong>댓글 ${commentCount}</strong></button>
       </div>
       ${isExpanded ? `
         <div class="comment-panel">
           <div class="comment-list">
-            ${item.commentItems.map((comment) => `
+            ${comments.length ? comments.map((comment) => `
               <article class="comment-row">
-                <span>${comment.author} · ${comment.time}</span>
-                <p>${comment.body}</p>
-                <button type="button" data-report-comment="${item.id}">신고</button>
+                <span>${escapeHtml(comment.author)} · ${formatRelativeTime(comment.createdAt)}</span>
+                <p>${escapeHtml(comment.body)}</p>
               </article>
-            `).join('')}
+            `).join('') : '<p class="comment-empty">아직 댓글이 없습니다. 첫 의견을 남겨보세요.</p>'}
           </div>
           <form class="comment-form" data-comment-form="${item.id}">
-            <input name="comment" type="text" placeholder="의견을 입력하세요" autocomplete="off">
+            <input name="comment" type="text" maxlength="500" placeholder="댓글을 입력하세요" autocomplete="off">
             <button class="small-button" type="submit">등록</button>
           </form>
         </div>
@@ -1495,32 +1508,75 @@ function requireCommunityProfile(actionName) {
 function visiblePosts() {
   return [...posts]
     .sort((a, b) => {
-    if (state.postSort === 'latest') return posts.indexOf(a) - posts.indexOf(b);
-    return b.hot - a.hot;
+    if (state.postSort === 'latest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return (b.hot + b.likes + b.comments) - (a.hot + a.likes + a.comments);
   });
-}
-
-function renderPostRoomOptions() {
-  document.querySelector('#postRoom').innerHTML = rooms
-    .filter((room) => room.name !== '전체')
-    .map((room) => `<option value="${room.name}">${room.name}</option>`)
-    .join('');
 }
 
 function renderPosts() {
   const nickname = document.querySelector('#communityNickname');
   if (nickname) nickname.textContent = currentUser.nickname || '닉네임 설정 필요';
-  renderPostRoomOptions();
   document.querySelector('#sortMenuLabel').textContent = state.postSort === 'latest' ? '최신순' : '인기순';
   document.querySelector('#postList').innerHTML = visiblePosts().map(postTemplate).join('');
+}
+
+async function loadCommunityPosts({ keepExpanded = false } = {}) {
+  try {
+    const response = await fetch(`/api/community/posts?sort=${encodeURIComponent(state.postSort)}`);
+    if (!response.ok) throw new Error('커뮤니티 API 응답 실패');
+    const data = await response.json();
+    posts = Array.isArray(data.posts) ? data.posts : posts;
+    if (!keepExpanded) state.expandedPostId = visiblePosts()[0]?.id || null;
+    renderPosts();
+    renderProfile();
+  } catch (error) {
+    renderPosts();
+    showToast('커뮤니티 서버 연결 전이라 임시 글을 표시합니다.');
+  }
+}
+
+async function saveCommunityPost(payload) {
+  const response = await fetch('/api/community/posts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || '게시글 저장 실패');
+  return data.post;
+}
+
+async function saveCommunityLike(postId, liked) {
+  const response = await fetch(`/api/community/posts/${postId}/like`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ liked }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || '공감 저장 실패');
+  return data.post;
+}
+
+async function saveCommunityComment(postId, body) {
+  const response = await fetch(`/api/community/posts/${postId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      body,
+      author: currentUser.nickname,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || '댓글 저장 실패');
+  return data.post;
 }
 
 function activityTemplate(item) {
   return `
     <article class="activity-row">
-      <span>${item.type} · ${item.time}</span>
-      <strong>${item.title}</strong>
-      <p>${item.body}</p>
+      <span>${escapeHtml(item.type)} · ${formatRelativeTime(item.createdAt)}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <p>${escapeHtml(item.body)}</p>
     </article>
   `;
 }
@@ -1536,18 +1592,18 @@ function renderProfile() {
   const myPosts = posts
     .flatMap((post, postIndex) => post.author === currentUser.nickname ? [{
       type: '게시글',
-      time: post.time,
+      createdAt: post.createdAt,
       order: postIndex,
       title: post.title,
-      body: `${post.room} · 공감 ${post.likes} · 댓글 ${post.comments}`,
+      body: `공감 ${post.likes} · 댓글 ${post.comments}`,
     }] : []);
 
   const myComments = posts
-    .flatMap((post, postIndex) => post.commentItems
+    .flatMap((post, postIndex) => (post.commentItems || [])
       .filter((comment) => comment.author === currentUser.nickname)
       .map((comment, commentIndex) => ({
         type: '댓글',
-        time: comment.time,
+        createdAt: comment.createdAt,
         order: postIndex + ((commentIndex + 1) / 100),
         title: post.title,
         body: comment.body,
@@ -1579,7 +1635,7 @@ document.querySelectorAll('[data-view-jump]').forEach((button) => {
   button.addEventListener('click', () => setView(button.dataset.viewJump));
 });
 
-document.body.addEventListener('click', (event) => {
+document.body.addEventListener('click', async (event) => {
   const marketButton = event.target.closest('[data-market-index]');
   if (marketButton) {
     state.selectedMarketIndex = Number(marketButton.dataset.marketIndex);
@@ -1606,7 +1662,7 @@ document.querySelector('#marketDetailBackButton').addEventListener('click', () =
   setView('dashboard');
 });
 
-document.body.addEventListener('click', (event) => {
+document.body.addEventListener('click', async (event) => {
   const typeButton = event.target.closest('[data-indicator-type]');
   if (typeButton) {
     state.indicatorType = typeButton.dataset.indicatorType;
@@ -1637,7 +1693,7 @@ document.querySelector('#indicatorDetailBackButton').addEventListener('click', (
   setView('indicators');
 });
 
-document.body.addEventListener('click', (event) => {
+document.body.addEventListener('click', async (event) => {
   const newsButton = event.target.closest('[data-news-id]');
   if (newsButton && state.view === 'news') {
     state.selectedNewsId = newsButton.dataset.newsId;
@@ -1665,17 +1721,16 @@ document.body.addEventListener('click', (event) => {
     const post = postById(likeButton.dataset.likePost);
     if (!post) return;
     const isLiked = state.likedPostIds.has(post.id);
-    if (isLiked) {
-      state.likedPostIds.delete(post.id);
-      post.likes -= 1;
-      post.hot -= 3;
-    } else {
-      state.likedPostIds.add(post.id);
-      post.likes += 1;
-      post.hot += 3;
+    try {
+      const updatedPost = await saveCommunityLike(post.id, !isLiked);
+      if (isLiked) state.likedPostIds.delete(post.id);
+      else state.likedPostIds.add(post.id);
+      posts = posts.map((item) => (item.id === updatedPost.id ? updatedPost : item));
+      renderPosts();
+      showToast(isLiked ? '공감을 취소했습니다.' : '공감이 반영되었습니다.');
+    } catch (error) {
+      showToast('공감을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
     }
-    renderPosts();
-    showToast(isLiked ? '공감을 취소했습니다.' : '공감이 반영되었습니다.');
   }
 
   const postRow = event.target.closest('[data-post-id]');
@@ -1688,23 +1743,12 @@ document.body.addEventListener('click', (event) => {
   if (commentButton) {
     state.expandedPostId = Number(commentButton.dataset.commentPost);
     renderPosts();
-    showToast('게시물 상세에서 댓글을 확인할 수 있습니다.');
-  }
-
-  const reportCommentButton = event.target.closest('[data-report-comment]');
-  if (reportCommentButton) {
-    showToast('댓글 신고가 접수되었습니다. 운영 검토 대상에 추가됩니다.');
-  }
-
-  const reportButton = event.target.closest('[data-report-post]');
-  if (reportButton) {
-    if (!requireCommunityProfile('신고')) return;
-    showToast('신고가 접수되었습니다. 운영 검토 대상에 추가됩니다.');
+    showToast('댓글을 확인하고 의견을 남길 수 있습니다.');
   }
 
 });
 
-document.body.addEventListener('submit', (event) => {
+document.body.addEventListener('submit', async (event) => {
   const commentForm = event.target.closest('[data-comment-form]');
   if (commentForm) {
     event.preventDefault();
@@ -1718,17 +1762,17 @@ document.body.addEventListener('submit', (event) => {
       return;
     }
 
-    post.commentItems.push({
-      author: currentUser.nickname,
-      time: '방금 전',
-      body,
-    });
-    post.comments += 1;
-    post.hot += 3;
-    input.value = '';
-    renderPosts();
-    renderProfile();
-    showToast('댓글이 등록되었습니다.');
+    try {
+      const updatedPost = await saveCommunityComment(post.id, body);
+      posts = posts.map((item) => (item.id === updatedPost.id ? updatedPost : item));
+      state.expandedPostId = updatedPost.id;
+      input.value = '';
+      renderPosts();
+      renderProfile();
+      showToast('댓글이 등록되었습니다.');
+    } catch (error) {
+      showToast('댓글을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    }
   }
 });
 
@@ -1789,16 +1833,14 @@ document.body.addEventListener('click', (event) => {
 
 document.querySelector('#sortToggleButton').addEventListener('click', () => {
   state.postSort = state.postSort === 'latest' ? 'hot' : 'latest';
-  state.expandedPostId = visiblePosts()[0]?.id || null;
-  renderPosts();
+  loadCommunityPosts();
   document.querySelector('#postList').scrollIntoView({ block: 'start' });
 });
 
 function openPostModal() {
   if (!requireCommunityProfile('새 글 작성')) return;
-  const roomSelect = document.querySelector('#postRoom');
-  const defaultRoom = state.selectedRoom === '전체' ? '실시간 시황' : state.selectedRoom;
-  roomSelect.value = defaultRoom;
+  document.querySelector('#postTitle').value = '';
+  document.querySelector('#postBody').value = '';
   document.querySelector('#postModal').showModal();
 }
 
@@ -1880,43 +1922,38 @@ document.querySelector('#profileEditForm').addEventListener('submit', (event) =>
   saveProfile();
 });
 
-document.querySelector('#postForm').addEventListener('submit', (event) => {
+document.querySelector('#postForm').addEventListener('submit', async (event) => {
   if (event.submitter?.value === 'cancel') return;
   event.preventDefault();
 
   const title = document.querySelector('#postTitle').value.trim();
   const body = document.querySelector('#postBody').value.trim();
-  const room = document.querySelector('#postRoom').value;
 
   if (!title || !body) {
     showToast('제목과 본문을 입력해주세요.');
     return;
   }
 
-  posts.unshift({
-    id: Date.now(),
-    title,
-    body,
-    room,
-    author: currentUser.nickname,
-    badge: currentUser.badge,
-    avatar: currentUser.avatar,
-    avatarImage: currentUser.avatarImage,
-    time: '방금 전',
-    comments: 0,
-    likes: 0,
-    hot: 20,
-    commentItems: [],
-  });
-
-  document.querySelector('#postForm').reset();
-  document.querySelector('#postModal').close();
-  setView('community');
-  state.postSort = 'latest';
-  state.expandedPostId = posts[0].id;
-  renderPosts();
-  renderProfile();
-  showToast('게시글이 등록되었습니다.');
+  try {
+    const post = await saveCommunityPost({
+      title,
+      body,
+      author: currentUser.nickname,
+      badge: currentUser.badge,
+      avatar: currentUser.avatar,
+      avatarImage: currentUser.avatarImage,
+    });
+    document.querySelector('#postForm').reset();
+    document.querySelector('#postModal').close();
+    setView('community');
+    state.postSort = 'latest';
+    state.expandedPostId = post.id;
+    await loadCommunityPosts({ keepExpanded: true });
+    renderProfile();
+    showToast('게시글이 등록되었습니다.');
+  } catch (error) {
+    showToast('게시글을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+  }
 });
 
 const savedNewsNotificationSetting = localStorage.getItem('goldSignalNewsNotifications');
@@ -1925,6 +1962,7 @@ document.querySelector('#pushToggle').checked = savedNewsNotificationSetting ===
   && Notification.permission === 'granted';
 
 renderAll();
+loadCommunityPosts();
 loadIndicators();
 loadMetalPrices();
 loadNews();

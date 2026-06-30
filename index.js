@@ -35,6 +35,8 @@ function hasConfiguredEnv(name) {
 
 const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, 'public');
+const dataDir = path.join(__dirname, 'data');
+const communityPostsPath = path.join(dataDir, 'community-posts.json');
 const GOLD_API_BASE_URL = 'https://www.goldapi.io/api';
 const GOLD_API_SYMBOL = process.env.GOLD_API_SYMBOL || 'XAU';
 const GOLD_API_CURRENCY = process.env.GOLD_API_CURRENCY || 'USD';
@@ -78,6 +80,56 @@ const googleNewsTopics = [
 const newsStreamClients = new Set();
 let latestNewsSnapshot = null;
 let latestNewsSnapshotAt = 0;
+
+const defaultCommunityPosts = [
+  {
+    id: 1,
+    title: '오늘 CPI 이후 금 어떻게 보시나요?',
+    body: 'CPI가 예상보다 높게 나오면 단기 조정 가능성을 보고 있습니다. 다만 GLD ETF 가격 흐름도 같이 보면서 분할 접근이 나을지 고민 중입니다.',
+    author: 'cpi_watch',
+    badge: '경제 지표 관심',
+    avatar: 'C',
+    avatarImage: '',
+    createdAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+    likes: 24,
+    hot: 92,
+    commentItems: [
+      { id: 101, author: 'macro_watch', createdAt: new Date(Date.now() - 4 * 60 * 1000).toISOString(), body: '예상 상회면 단기 조정은 열어둬야 할 것 같습니다.' },
+      { id: 102, author: 'etf_user', createdAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(), body: '저는 GLD 가격이 꺾이는지도 같이 보려고요.' },
+    ],
+  },
+  {
+    id: 2,
+    title: '금 ETF랑 실물 금 중 뭐가 나을까요?',
+    body: '장기 보유 목적이면 ETF 수수료와 실물 보관 비용을 같이 봐야 할 것 같습니다.',
+    author: 'etf_user',
+    badge: 'ETF 투자자',
+    avatar: 'E',
+    avatarImage: '',
+    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    likes: 10,
+    hot: 61,
+    commentItems: [
+      { id: 201, author: 'long_gold', createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), body: '환금성은 ETF가 편하고, 실물은 보관 비용을 꼭 봐야 합니다.' },
+    ],
+  },
+  {
+    id: 3,
+    title: '실질금리 상승인데 중앙은행 매입은 계속 강하네요',
+    body: '단기 가격과 장기 수급이 반대로 움직이는 구간이라 해석이 어렵습니다.',
+    author: 'macro_watch',
+    badge: '활발한 참여자',
+    avatar: 'M',
+    avatarImage: '',
+    createdAt: new Date(Date.now() - 34 * 60 * 1000).toISOString(),
+    likes: 31,
+    hot: 110,
+    commentItems: [
+      { id: 301, author: 'long_gold', createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(), body: '단기 매크로랑 장기 수급을 분리해서 보는 게 낫다고 봅니다.' },
+      { id: 302, author: 'macro_watch', createdAt: new Date(Date.now() - 28 * 60 * 1000).toISOString(), body: '실질금리 둔화 신호가 나오면 반응이 빨라질 수 있어요.' },
+    ],
+  },
+];
 
 const fallbackIndicators = {
   daily: [
@@ -127,7 +179,7 @@ const fallbackIndicators = {
       related: 'DXY, 국내 금 가격',
     },
     {
-      name: '유가',
+      name: 'WTI 원유',
       value: '$78.60',
       compare: 'WTI 전일 $77.90',
       change: '+0.90%',
@@ -461,6 +513,170 @@ function sendJson(res, data, statusCode = 200) {
   res.end(JSON.stringify(data));
 }
 
+function readJsonBody(req, limit = 20000) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > limit) {
+        reject(new Error('요청 본문이 너무 깁니다.'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (!body) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(new Error('JSON 형식이 올바르지 않습니다.'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function cleanText(value, maxLength) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeCommunityPost(post) {
+  const commentItems = Array.isArray(post.commentItems) ? post.commentItems : [];
+  return {
+    ...post,
+    comments: commentItems.length,
+    likes: Number(post.likes || 0),
+    hot: Number(post.hot || 0),
+    commentItems,
+  };
+}
+
+function loadCommunityPosts() {
+  try {
+    if (!fs.existsSync(communityPostsPath)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(communityPostsPath, JSON.stringify(defaultCommunityPosts, null, 2));
+    }
+    const posts = JSON.parse(fs.readFileSync(communityPostsPath, 'utf8'));
+    return Array.isArray(posts) ? posts.map(normalizeCommunityPost) : defaultCommunityPosts.map(normalizeCommunityPost);
+  } catch (error) {
+    return defaultCommunityPosts.map(normalizeCommunityPost);
+  }
+}
+
+function saveCommunityPosts(posts) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(communityPostsPath, JSON.stringify(posts.map(normalizeCommunityPost), null, 2));
+}
+
+function sortedCommunityPosts(sort = 'latest') {
+  const posts = loadCommunityPosts();
+  if (sort === 'hot') {
+    return posts.sort((left, right) => (right.hot + right.likes + right.comments) - (left.hot + left.likes + left.comments));
+  }
+  return posts.sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
+async function handleCommunityRequest(req, res, url) {
+  if (url.pathname === '/api/community/posts' && req.method === 'GET') {
+    sendJson(res, {
+      updatedAt: new Date().toISOString(),
+      posts: sortedCommunityPosts(url.searchParams.get('sort') || 'latest'),
+    });
+    return true;
+  }
+
+  if (url.pathname === '/api/community/posts' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const title = cleanText(body.title, 80);
+      const content = cleanText(body.body, 1200);
+      const author = cleanText(body.author, 20) || 'gold_user';
+      if (!title || !content) {
+        sendJson(res, { error: '제목과 본문을 입력해주세요.' }, 400);
+        return true;
+      }
+      const posts = loadCommunityPosts();
+      const post = normalizeCommunityPost({
+        id: Date.now(),
+        title,
+        body: content,
+        author,
+        badge: cleanText(body.badge, 20) || '금 투자자',
+        avatar: cleanText(body.avatar, 2) || '金',
+        avatarImage: typeof body.avatarImage === 'string' && body.avatarImage.startsWith('data:image/') ? body.avatarImage : '',
+        createdAt: new Date().toISOString(),
+        likes: 0,
+        hot: 20,
+        commentItems: [],
+      });
+      posts.unshift(post);
+      saveCommunityPosts(posts);
+      sendJson(res, { post }, 201);
+    } catch (error) {
+      sendJson(res, { error: error.message }, 400);
+    }
+    return true;
+  }
+
+  const likeMatch = url.pathname.match(/^\/api\/community\/posts\/(\d+)\/like$/);
+  if (likeMatch && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const posts = loadCommunityPosts();
+      const post = posts.find((item) => item.id === Number(likeMatch[1]));
+      if (!post) {
+        sendJson(res, { error: '게시글을 찾을 수 없습니다.' }, 404);
+        return true;
+      }
+      const shouldLike = Boolean(body.liked);
+      post.likes = Math.max(0, Number(post.likes || 0) + (shouldLike ? 1 : -1));
+      post.hot = Math.max(0, Number(post.hot || 0) + (shouldLike ? 3 : -3));
+      saveCommunityPosts(posts);
+      sendJson(res, { post: normalizeCommunityPost(post) });
+    } catch (error) {
+      sendJson(res, { error: error.message }, 400);
+    }
+    return true;
+  }
+
+  const commentMatch = url.pathname.match(/^\/api\/community\/posts\/(\d+)\/comments$/);
+  if (commentMatch && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const content = cleanText(body.body, 500);
+      const author = cleanText(body.author, 20) || 'gold_user';
+      if (!content) {
+        sendJson(res, { error: '댓글 내용을 입력해주세요.' }, 400);
+        return true;
+      }
+      const posts = loadCommunityPosts();
+      const post = posts.find((item) => item.id === Number(commentMatch[1]));
+      if (!post) {
+        sendJson(res, { error: '게시글을 찾을 수 없습니다.' }, 404);
+        return true;
+      }
+      post.commentItems = Array.isArray(post.commentItems) ? post.commentItems : [];
+      post.commentItems.push({
+        id: Date.now(),
+        author,
+        createdAt: new Date().toISOString(),
+        body: content,
+      });
+      post.hot = Number(post.hot || 0) + 3;
+      saveCommunityPosts(posts);
+      sendJson(res, { post: normalizeCommunityPost(post) }, 201);
+    } catch (error) {
+      sendJson(res, { error: error.message }, 400);
+    }
+    return true;
+  }
+
+  return false;
+}
+
 function normalizeGoldApiResponse(data) {
   const symbol = `${GOLD_API_SYMBOL}/${GOLD_API_CURRENCY}`;
   return {
@@ -746,9 +962,10 @@ async function getDomesticSilver(range = 'day') {
   const latest = domesticItems[domesticItems.length - 1];
   const latestDiff = data.diff || {};
   const price = latest.sellPrice3_75g / DON_GRAMS;
-  const previousPrice = Number(latestDiff.silver_prev1) ? Number(latestDiff.silver_prev1) / DON_GRAMS : (history[history.length - 2]?.value || price);
+  const previousDatePrice = previousDifferentDateValue(domesticItems, latest, 'sellPrice3_75g');
+  const previousPrice = Number(previousDatePrice) ? Number(previousDatePrice) / DON_GRAMS : (history[history.length - 2]?.value || price);
   const change = price - previousPrice;
-  const changePercent = Number(latestDiff.silver_diff1_per) || (previousPrice ? (change / previousPrice) * 100 : 0);
+  const changePercent = previousPrice ? (change / previousPrice) * 100 : 0;
 
   return {
     name: '국내 은값',
@@ -823,6 +1040,13 @@ async function getKoreaGoldxInternationalSilverPrice() {
 
 function lastHistoryValue(history) {
   return [...(history || [])].reverse().find((point) => Number.isFinite(Number(point.value)))?.value ?? null;
+}
+
+function previousDifferentDateValue(items, latest, valueKey) {
+  const latestDate = String(latest?.date || '').slice(0, 10);
+  return [...(items || [])]
+    .reverse()
+    .find((item) => String(item?.date || '').slice(0, 10) < latestDate && Number.isFinite(Number(item[valueKey])))?.[valueKey];
 }
 
 function alignConvertedMetalHistory(metalHistory, fxHistory) {
@@ -1767,7 +1991,7 @@ async function getIndicators() {
     buildIndicator(debtToGdp, fallbackIndicators.daily[2], 'FRED GFDEGDQ188S', (series) => periodRateIndicator('미국 GDP 대비 부채 비율', series, 'higherSupportsGold', fallbackIndicators.daily[2].summary, fallbackIndicators.daily[2].related)),
     buildIndicator(dollarIndex, fallbackIndicators.daily[3], 'Yahoo Finance DX-Y.NYB', (series) => dailyValueIndicator('달러지수 DXY', series, 'higherHurtsGold', (value) => value.toFixed(2), fallbackIndicators.daily[3].summary, fallbackIndicators.daily[3].related)),
     buildIndicator(krw, fallbackIndicators.daily[4], 'Yahoo Finance KRW=X', (series) => dailyValueIndicator('원/달러 환율', series, 'higherSupportsGold', (value) => `${value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}원`, fallbackIndicators.daily[4].summary, fallbackIndicators.daily[4].related)),
-    buildIndicator(wti, fallbackIndicators.daily[5], 'Yahoo Finance CL=F', (series) => dailyValueIndicator('유가', series, 'higherSupportsGold', (value) => `$${value.toFixed(2)}`, fallbackIndicators.daily[5].summary, fallbackIndicators.daily[5].related)),
+        buildIndicator(wti, fallbackIndicators.daily[5], 'Yahoo Finance CL=F', (series) => dailyValueIndicator('WTI 원유', series, 'higherSupportsGold', (value) => `$${value.toFixed(2)}`, fallbackIndicators.daily[5].summary, fallbackIndicators.daily[5].related)),
     buildIndicator(gld, fallbackIndicators.daily[6], 'Yahoo Finance GLD', (series) => dailyValueIndicator('GLD ETF 가격', series, 'higherSupportsGold', (value) => `$${value.toFixed(2)}`, fallbackIndicators.daily[6].summary, fallbackIndicators.daily[6].related)),
   ];
 
@@ -1880,6 +2104,15 @@ async function getIndicators() {
 
 function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname.startsWith('/api/community/')) {
+    handleCommunityRequest(req, res, url).then((handled) => {
+      if (!handled) sendJson(res, { error: 'Not found' }, 404);
+    }).catch((error) => {
+      sendJson(res, { error: error.message }, 500);
+    });
+    return;
+  }
 
   if (url.pathname === '/api/health') {
     sendJson(res, {

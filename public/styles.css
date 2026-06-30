@@ -1948,6 +1948,23 @@ textarea:focus-visible {
   line-height: 1.55;
 }
 
+.community-post-copy {
+  display: grid;
+  gap: 7px;
+}
+
+.community-post-copy strong {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.community-post-copy p {
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.58;
+}
+
 .post-row p {
   margin: 0;
 }
@@ -1962,7 +1979,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: repeat(2, auto) minmax(0, 1fr);
   align-items: center;
-  gap: 22px;
+  gap: 16px;
 }
 
 .icon-action {
@@ -2012,7 +2029,7 @@ textarea:focus-visible {
   gap: 10px;
   margin-top: 2px;
   padding: 12px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--surface-2);
   border: 1px solid var(--line);
 }
@@ -2037,6 +2054,12 @@ textarea:focus-visible {
   color: var(--text-2);
   font-size: 14px;
   line-height: 1.55;
+}
+
+.comment-empty {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .comment-row button {
@@ -2089,6 +2112,17 @@ textarea:focus-visible {
   color: var(--muted-2);
   text-align: left;
   font-weight: 700;
+}
+
+.community-write-note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.55;
 }
 
 .profile-panel {
@@ -2581,6 +2615,10 @@ textarea:focus-visible {
   .indicator-detail-info div {
     grid-template-columns: 1fr;
     gap: 7px;
+  }
+
+  .community-actions {
+    grid-template-columns: repeat(2, auto);
   }
 
   .gold-summary {
