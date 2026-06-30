@@ -1240,6 +1240,8 @@ async function getMarketSnapshot() {
   const fxValue = fx.status === 'fulfilled' ? fx.value : null;
   const domesticGoldValue = domesticGoldResult.status === 'fulfilled' ? domesticGoldResult.value : null;
   const domesticSilverValue = domesticSilverResult.status === 'fulfilled' ? domesticSilverResult.value : null;
+  const domesticSilverError = domesticSilverResult.status === 'rejected' ? domesticSilverResult.reason?.message : null;
+  const silverHistoryError = silverHistoryResult.status === 'rejected' ? silverHistoryResult.reason?.message : null;
   const goldHistory = goldHistoryResult.status === 'fulfilled' ? goldHistoryResult.value.history : [];
   const silverHistory = silverHistoryResult.status === 'fulfilled' ? silverHistoryResult.value.history : [];
   const fxHistory = fxHistoryResult.status === 'fulfilled' ? fxHistoryResult.value.history : fxValue?.history || [];
@@ -1267,11 +1269,13 @@ async function getMarketSnapshot() {
     silver: silverWithHistory,
     silverError,
     domesticSilver: domesticSilverValue,
+    domesticSilverError,
     silverPremium: silverPremium ? {
       ...silverPremium,
       history: silverPremiumHistory,
       note: '한국금거래소 Silver-3.75g 판매가를 1g으로 환산해 국제 은 현물 원화 환산가와 비교한 값입니다.',
     } : null,
+    silverHistoryError,
     fx: fxValue,
   };
 }
