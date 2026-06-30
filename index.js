@@ -927,10 +927,13 @@ async function fetchKoreaGoldxSilver(range = 'day') {
   const response = await fetch(KOREA_GOLDX_CHART_URL, {
     method: 'POST',
     headers: {
+      Accept: 'application/json, text/javascript, */*; q=0.01',
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'X-Requested-With': 'XMLHttpRequest',
-      'User-Agent': 'Mozilla/5.0 GoldSignal/1.0',
+      'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+      Origin: 'https://www.koreagoldx.co.kr',
       Referer: 'https://www.koreagoldx.co.kr/',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 GoldSignal/1.0',
     },
     body,
     signal: AbortSignal.timeout(10000),
