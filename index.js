@@ -39,8 +39,19 @@ const GOLD_API_BASE_URL = 'https://www.goldapi.io/api';
 const GOLD_API_SYMBOL = process.env.GOLD_API_SYMBOL || 'XAU';
 const GOLD_API_CURRENCY = process.env.GOLD_API_CURRENCY || 'USD';
 const GOLD_API_DATE = process.env.GOLD_API_DATE || '';
-const YAHOO_FINANCE_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF';
+const METALS_DEV_API_BASE_URL = 'https://api.metals.dev/v1';
+const YAHOO_FINANCE_CHART_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
+const YAHOO_GOLD_SYMBOL = 'GC=F';
+const YAHOO_SILVER_SYMBOL = 'SI=F';
+const YAHOO_USD_KRW_SYMBOL = 'KRW=X';
+const YAHOO_TREASURY_10Y_SYMBOL = '^TNX';
+const YAHOO_DXY_SYMBOL = 'DX-Y.NYB';
+const YAHOO_WTI_SYMBOL = 'CL=F';
+const YAHOO_GLD_SYMBOL = 'GLD';
 const KRX_GOLD_API_URL = 'https://apis.data.go.kr/1160100/service/GetGeneralProductInfoService/getGoldPriceInfo';
+const KOREA_GOLDX_CHART_URL = 'https://www.koreagoldx.co.kr/api/main/chart';
+const TROY_OUNCE_GRAMS = 31.1034768;
+const DON_GRAMS = 3.75;
 const FRED_API_BASE_URL = 'https://api.stlouisfed.org/fred/series/observations';
 const NEWS_API_BASE_URL = 'https://newsapi.org/v2/everything';
 const GNEWS_API_BASE_URL = 'https://gnews.io/api/v4/search';
@@ -125,13 +136,13 @@ const fallbackIndicators = {
       related: 'CPI, PCE, 기대인플레이션',
     },
     {
-      name: '금 ETF 흐름',
-      value: '+$286M',
-      compare: '전일 +$92M',
-      change: '순유입 확대',
+      name: 'GLD ETF 가격',
+      value: '$215.40',
+      compare: '전일 $213.80',
+      change: '+0.75%',
       impact: 'up',
-      summary: 'ETF 순유입은 투자 수요가 늘고 있음을 보여주는 중기 우호 신호입니다.',
-      related: 'GLD, IAU, 글로벌 ETF 보유량',
+      summary: 'GLD는 대표적인 금 현물 ETF라서 가격 상승은 금 투자 수요와 국제 금값 흐름을 함께 확인하는 참고 지표가 될 수 있습니다.',
+      related: '국제 금값, ETF 투자 수요, 달러지수',
     },
   ],
   monthly: [
@@ -473,7 +484,7 @@ function normalizeGoldApiResponse(data) {
   };
 }
 
-function normalizeYahooGoldResponse(result) {
+function normalizeYahooMetalResponse(result, config) {
   const meta = result.meta || {};
   const quotes = result.indicators?.quote?.[0] || {};
   const closes = (quotes.close || []).filter(Number.isFinite);
@@ -482,8 +493,8 @@ function normalizeYahooGoldResponse(result) {
   const change = price - previousClose;
 
   return {
-    symbol: 'GC=F',
-    name: '국제 금선물',
+    symbol: meta.symbol || config.symbol,
+    name: config.name,
     price,
     change,
     changePercent: previousClose ? (change / previousClose) * 100 : 0,
@@ -493,13 +504,32 @@ function normalizeYahooGoldResponse(result) {
     high: Number(meta.regularMarketDayHigh || Math.max(...(quotes.high || []).filter(Number.isFinite))),
     low: Number(meta.regularMarketDayLow || Math.min(...(quotes.low || []).filter(Number.isFinite))),
     previousClose,
-    gram24k: price / 31.1034768,
+    gramPriceUsd: config.isMetal ? price / TROY_OUNCE_GRAMS : null,
+    gram24k: config.symbol === YAHOO_GOLD_SYMBOL ? price / TROY_OUNCE_GRAMS : null,
     unit: '트로이온스',
     currency: meta.currency || 'USD',
-    source: `${meta.exchangeName || 'COMEX'} 금 선물`,
+    source: `${meta.exchangeName || 'COMEX'} ${config.sourceLabel}`,
     updatedAt: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : new Date().toISOString(),
     isFallback: false,
   };
+}
+
+function normalizeYahooGoldResponse(result) {
+  return normalizeYahooMetalResponse(result, {
+    symbol: YAHOO_GOLD_SYMBOL,
+    name: '국제 금선물',
+    sourceLabel: '금 선물',
+    isMetal: true,
+  });
+}
+
+function normalizeYahooSilverResponse(result) {
+  return normalizeYahooMetalResponse(result, {
+    symbol: YAHOO_SILVER_SYMBOL,
+    name: '국제 은선물',
+    sourceLabel: '은 선물',
+    isMetal: true,
+  });
 }
 
 const goldHistoryRanges = {
@@ -509,33 +539,81 @@ const goldHistoryRanges = {
   year: { range: '1y', interval: '1wk' },
 };
 
-async function fetchYahooGoldChart(range = 'day') {
+async function fetchYahooChart(symbol, range = 'day') {
   const config = goldHistoryRanges[range] || goldHistoryRanges.day;
   const params = new URLSearchParams({ range: config.range, interval: config.interval, includePrePost: 'false' });
-  const response = await fetch(`${YAHOO_FINANCE_CHART_URL}?${params}`, {
+  const response = await fetch(`${YAHOO_FINANCE_CHART_BASE_URL}/${encodeURIComponent(symbol)}?${params}`, {
     headers: { 'User-Agent': 'Mozilla/5.0 GoldSignal/1.0' },
     signal: AbortSignal.timeout(7000),
   });
-  if (!response.ok) throw new Error(`Gold futures API failed with ${response.status}`);
+  if (!response.ok) throw new Error(`${symbol} chart API failed with ${response.status}`);
   const data = await response.json();
   const result = data.chart?.result?.[0];
-  if (!result) throw new Error(data.chart?.error?.description || 'Gold futures data is unavailable');
+  if (!result) throw new Error(data.chart?.error?.description || `${symbol} data is unavailable`);
   return result;
+}
+
+async function fetchYahooGoldChart(range = 'day') {
+  return fetchYahooChart(YAHOO_GOLD_SYMBOL, range);
 }
 
 async function getGoldHistory(range = 'day') {
   const result = await fetchYahooGoldChart(range);
+  return yahooHistoryFromResult(result, range, '금 선물');
+}
+
+function yahooHistoryFromResult(result, range, sourceLabel) {
   const closes = result.indicators?.quote?.[0]?.close || [];
   const history = (result.timestamp || []).map((timestamp, index) => ({
     date: new Date(timestamp * 1000).toISOString(),
     value: Number(closes[index]),
-  })).filter((point) => Number.isFinite(point.value));
+  })).filter((point) => Number.isFinite(point.value) && point.value > 0);
   return {
-    provider: `${result.meta?.exchangeName || 'COMEX'} 금 선물`,
-    symbol: result.meta?.symbol || 'GC=F',
+    provider: `${result.meta?.exchangeName || 'COMEX'} ${sourceLabel}`,
+    symbol: result.meta?.symbol,
     range,
     history,
   };
+}
+
+async function getSilverHistory(range = 'day') {
+  try {
+    return await getKoreaGoldxInternationalSilverHistory(range);
+  } catch (error) {
+    if (!hasConfiguredEnv('METALS_DEV_API_KEY')) throw error;
+  }
+
+  const start = rangeStartDate(range);
+  const end = new Date();
+  const chunks = [];
+  for (let cursor = start; cursor <= end; cursor = addDays(cursor, 30)) {
+    const chunkEnd = new Date(Math.min(addDays(cursor, 29).getTime(), end.getTime()));
+    chunks.push([cursor, chunkEnd]);
+  }
+  const responses = [];
+  for (const [chunkStart, chunkEnd] of chunks) {
+    responses.push(await fetchMetalsDev('timeseries', {
+      start_date: isoDateOnly(chunkStart),
+      end_date: isoDateOnly(chunkEnd),
+    }));
+  }
+  const historyByDate = new Map();
+  responses.flatMap(metalsDevSeriesPoints).forEach((point) => {
+    historyByDate.set(point.date, point);
+  });
+  const history = [...historyByDate.values()].sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  if (!history.length) throw new Error('Metals.Dev silver history is empty');
+  return {
+    provider: 'Metals.Dev 은 현물',
+    symbol: 'XAG/USD',
+    range,
+    history,
+  };
+}
+
+async function getUsdKrwHistory(range = 'day') {
+  const result = await fetchYahooChart(YAHOO_USD_KRW_SYMBOL, range);
+  return yahooHistoryFromResult(result, range, '원/달러 환율');
 }
 
 function compactDate(date) {
@@ -570,6 +648,9 @@ async function getDomesticGold(range = 'day') {
   const response = await fetch(`${KRX_GOLD_API_URL}?${params}`, {
     signal: AbortSignal.timeout(10000),
   });
+  if (response.status === 401) {
+    throw new Error('DATA_GO_KR_SERVICE_KEY is unauthorized. Check API approval status or wait until the issued key is activated.');
+  }
   if (!response.ok) throw new Error(`KRX gold API failed with ${response.status}`);
   const data = await response.json();
   const resultCode = data.response?.header?.resultCode;
@@ -609,6 +690,406 @@ async function getDomesticGold(range = 'day') {
     range,
     history,
   };
+}
+
+function domesticSilverPeriod(range) {
+  return {
+    day: '1M',
+    week: '1M',
+    month: '1M',
+    year: '1Y',
+  }[range] || '1M';
+}
+
+async function fetchKoreaGoldxSilver(range = 'day') {
+  const body = new URLSearchParams({
+    domesicType: 'Ag',
+    internationalType: 'Ag',
+    domesticDt: domesticSilverPeriod(range),
+    internationalDt: range === 'day' ? 'live' : domesticSilverPeriod(range),
+  });
+  const response = await fetch(KOREA_GOLDX_CHART_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      'User-Agent': 'Mozilla/5.0 GoldSignal/1.0',
+      Referer: 'https://www.koreagoldx.co.kr/',
+    },
+    body,
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new Error(`Korea Gold Exchange silver API failed with ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data.domesticList) || !data.domesticList.length) {
+    throw new Error('Korea Gold Exchange domestic silver data is empty');
+  }
+  return data;
+}
+
+async function getDomesticSilver(range = 'day') {
+  const data = await fetchKoreaGoldxSilver(range);
+  const domesticItems = data.domesticList
+    .map((item) => ({
+      ...item,
+      sellPrice3_75g: numericField(item, 's_silver'),
+      buyPrice3_75g: numericField(item, 'p_silver'),
+    }))
+    .filter((item) => Number.isFinite(item.sellPrice3_75g))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  if (!domesticItems.length) throw new Error('Korea Gold Exchange silver sell price is empty');
+  const history = domesticItems.map((item) => ({
+    date: item.date,
+    value: item.sellPrice3_75g / DON_GRAMS,
+    sourceValue: item.sellPrice3_75g,
+  }));
+  const latest = domesticItems[domesticItems.length - 1];
+  const latestDiff = data.diff || {};
+  const price = latest.sellPrice3_75g / DON_GRAMS;
+  const previousPrice = Number(latestDiff.silver_prev1) ? Number(latestDiff.silver_prev1) / DON_GRAMS : (history[history.length - 2]?.value || price);
+  const change = price - previousPrice;
+  const changePercent = Number(latestDiff.silver_diff1_per) || (previousPrice ? (change / previousPrice) * 100 : 0);
+
+  return {
+    name: '국내 은값',
+    symbol: 'KoreaGoldX Silver-3.75g',
+    price,
+    change,
+    changePercent,
+    previousClose: previousPrice,
+    sellPrice3_75g: latest.sellPrice3_75g,
+    buyPrice3_75g: latest.buyPrice3_75g,
+    unit: '원/g',
+    source: '한국금거래소 Silver-3.75g 판매가',
+    updatedAt: latest.date || latestDiff.writeday || new Date().toISOString(),
+    isFallback: false,
+    range,
+    history,
+  };
+}
+
+async function getKoreaGoldxInternationalSilverHistory(range = 'day') {
+  const data = await fetchKoreaGoldxSilver(range);
+  const history = (data.internationalList || [])
+    .map((item) => ({
+      date: item.date,
+      value: numericField(item, 'ask'),
+      bid: numericField(item, 'bid'),
+      exchangeRate: numericField(item, 'exchangeRate'),
+      krwPerGram: numericField(item, 'domesticPrice'),
+    }))
+    .filter((item) => item.date && Number.isFinite(item.value))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+
+  if (!history.length) throw new Error('Korea Gold Exchange international silver data is empty');
+
+  return {
+    provider: '한국금거래소 국제 은시세',
+    symbol: 'KoreaGoldX XAG/USD',
+    range,
+    history,
+    standardPrice: data.standardPrice || {},
+  };
+}
+
+async function getKoreaGoldxInternationalSilverPrice() {
+  const result = await getKoreaGoldxInternationalSilverHistory('day');
+  const history = result.history;
+  const latest = history[history.length - 1];
+  const standard = result.standardPrice || {};
+  const previousClose = Number(standard.prev_ask) || history[history.length - 2]?.value || latest.value;
+  const change = latest.value - previousClose;
+
+  return {
+    symbol: result.symbol,
+    name: '국제 은값',
+    price: latest.value,
+    bid: latest.bid,
+    ask: latest.value,
+    change,
+    changePercent: previousClose ? (change / previousClose) * 100 : 0,
+    previousClose,
+    gramPriceUsd: latest.value / TROY_OUNCE_GRAMS,
+    gramPriceKrw: latest.krwPerGram,
+    exchangeRate: latest.exchangeRate || Number(standard.exchange_rate),
+    unit: '트로이온스',
+    currency: 'USD',
+    source: result.provider,
+    updatedAt: latest.date || standard.date || new Date().toISOString(),
+    isFallback: false,
+    history,
+  };
+}
+
+function lastHistoryValue(history) {
+  return [...(history || [])].reverse().find((point) => Number.isFinite(Number(point.value)))?.value ?? null;
+}
+
+function alignConvertedMetalHistory(metalHistory, fxHistory) {
+  if (!metalHistory?.length || !fxHistory?.length) return [];
+  return metalHistory.map((point, index) => {
+    const fxPoint = fxHistory[Math.min(index, fxHistory.length - 1)] || fxHistory[fxHistory.length - 1];
+    const fxValue = Number(fxPoint?.value);
+    const metalValue = Number(point.value);
+    return {
+      date: point.date,
+      value: Number.isFinite(metalValue) && Number.isFinite(fxValue)
+        ? (metalValue / TROY_OUNCE_GRAMS) * fxValue
+        : null,
+    };
+  }).filter((point) => Number.isFinite(point.value));
+}
+
+function premiumHistoryFrom(domesticHistory, internationalKrwHistory) {
+  if (!domesticHistory?.length || !internationalKrwHistory?.length) return [];
+  const internationalByDate = new Map(internationalKrwHistory.map((point) => [String(point.date).slice(0, 10).replace(/-/g, ''), Number(point.value)]));
+  return domesticHistory.map((point, index) => {
+    const compact = String(point.date).slice(0, 10).replace(/-/g, '');
+    const international = internationalByDate.get(compact) ?? internationalKrwHistory[Math.min(index, internationalKrwHistory.length - 1)]?.value;
+    const domestic = Number(point.value);
+    const internationalValue = Number(international);
+    return {
+      date: point.date,
+      value: domestic && internationalValue ? ((domestic / internationalValue) - 1) * 100 : null,
+    };
+  }).filter((point) => Number.isFinite(point.value));
+}
+
+function premiumSnapshot(domesticPrice, internationalKrwPrice) {
+  const domestic = Number(domesticPrice);
+  const international = Number(internationalKrwPrice);
+  if (!Number.isFinite(domestic) || !Number.isFinite(international) || !international) return null;
+  const value = ((domestic / international) - 1) * 100;
+  return {
+    value,
+    label: `${Math.abs(value).toFixed(1)}% ${value >= 0 ? '비쌈' : '쌈'}`,
+    trend: value > 0 ? 'up' : value < 0 ? 'down' : 'neutral',
+  };
+}
+
+async function getUsdKrwRate() {
+  const history = await getUsdKrwHistory('day');
+  const price = Number(lastHistoryValue(history.history));
+  const previousClose = Number(history.history[history.history.length - 2]?.value || history.history[0]?.value || price);
+  const change = price - previousClose;
+  if (!Number.isFinite(price)) throw new Error('USD/KRW data is empty');
+  return {
+    name: '원/달러 환율',
+    symbol: YAHOO_USD_KRW_SYMBOL,
+    price,
+    change,
+    changePercent: previousClose ? (change / previousClose) * 100 : 0,
+    previousClose,
+    source: history.provider,
+    updatedAt: history.history[history.history.length - 1]?.date || new Date().toISOString(),
+    history: history.history,
+  };
+}
+
+function isoDateOnly(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function rangeStartDate(range) {
+  const days = { day: 7, week: 14, month: 45, year: 390 }[range] || 7;
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function metalsDevTimestamp(value) {
+  if (!value) return new Date().toISOString();
+  if (typeof value === 'number') {
+    return new Date(value > 100000000000 ? value : value * 1000).toISOString();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+function metalsDevNumber(value) {
+  if (value && typeof value === 'object') {
+    return metalsDevNumber(value.silver ?? value.XAG ?? value.xag ?? value.metals?.silver ?? value.price ?? value.value ?? value.rate);
+  }
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function metalsDevSilverValue(data) {
+  return metalsDevNumber(
+    data?.metals?.silver
+      ?? data?.metals?.XAG
+      ?? data?.rates?.silver
+      ?? data?.rates?.XAG
+      ?? data?.data?.silver
+      ?? data?.silver,
+  );
+}
+
+function metalsDevSeriesPoints(data) {
+  const series = data?.rates ?? data?.metals ?? data?.data ?? data?.prices ?? {};
+  if (Array.isArray(series)) {
+    return series.map((item) => ({
+      date: item.date || item.timestamp || item.time,
+      value: metalsDevSilverValue(item) ?? metalsDevNumber(item),
+    })).filter((point) => point.date && Number.isFinite(point.value));
+  }
+
+  return Object.entries(series).map(([date, value]) => ({
+    date,
+    value: metalsDevNumber(value),
+  })).filter((point) => point.date && Number.isFinite(point.value));
+}
+
+async function fetchMetalsDev(endpoint, params) {
+  if (!hasConfiguredEnv('METALS_DEV_API_KEY')) {
+    throw new Error('METALS_DEV_API_KEY is not configured');
+  }
+  const query = new URLSearchParams({
+    api_key: process.env.METALS_DEV_API_KEY,
+    currency: 'USD',
+    unit: 'toz',
+    ...params,
+  });
+  const response = await fetch(`${METALS_DEV_API_BASE_URL}/${endpoint}?${query}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(7000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error_message || data.message || data.error?.message || `Metals.Dev API failed with ${response.status}`);
+  }
+  if (data.status === 'error' || data.status === 'failure' || data.error || data.error_message) {
+    throw new Error(data.message || data.error_message || data.error?.message || 'Metals.Dev API returned an error');
+  }
+  return data;
+}
+
+async function getSilverPrice() {
+  try {
+    return await getKoreaGoldxInternationalSilverPrice();
+  } catch (error) {
+    if (!hasConfiguredEnv('METALS_DEV_API_KEY')) throw error;
+  }
+
+  const [latest, historyResult] = await Promise.all([
+    fetchMetalsDev('latest', {}),
+    getSilverHistory('day').catch(() => null),
+  ]);
+  const price = metalsDevSilverValue(latest);
+  if (!Number.isFinite(price)) throw new Error('Metals.Dev silver price is empty');
+  const history = historyResult?.history || [];
+  const previousClose = Number(history[history.length - 2]?.value || history[0]?.value || price);
+  const change = price - previousClose;
+  return {
+    symbol: 'XAG/USD',
+    name: '국제 은값',
+    price,
+    change,
+    changePercent: previousClose ? (change / previousClose) * 100 : 0,
+    previousClose,
+    unit: '트로이온스',
+    currency: 'USD',
+    source: 'Metals.Dev 은 현물',
+    updatedAt: metalsDevTimestamp(latest.timestamp),
+    isFallback: false,
+    history,
+  };
+}
+
+async function getMarketSnapshot() {
+  const [gold, silver, fx, domesticGoldResult, domesticSilverResult, goldHistoryResult, silverHistoryResult, fxHistoryResult] = await Promise.allSettled([
+    getGoldPrice(),
+    getSilverPrice(),
+    getUsdKrwRate(),
+    getDomesticGold('day'),
+    getDomesticSilver('day'),
+    getGoldHistory('day'),
+    getSilverHistory('day'),
+    getUsdKrwHistory('day'),
+  ]);
+
+  const goldValue = gold.status === 'fulfilled' ? gold.value : fallbackGoldPrice;
+  const silverValue = silver.status === 'fulfilled' ? silver.value : null;
+  const silverError = silver.status === 'rejected' ? silver.reason?.message : null;
+  const fxValue = fx.status === 'fulfilled' ? fx.value : null;
+  const domesticGoldValue = domesticGoldResult.status === 'fulfilled' ? domesticGoldResult.value : null;
+  const domesticSilverValue = domesticSilverResult.status === 'fulfilled' ? domesticSilverResult.value : null;
+  const goldHistory = goldHistoryResult.status === 'fulfilled' ? goldHistoryResult.value.history : [];
+  const silverHistory = silverHistoryResult.status === 'fulfilled' ? silverHistoryResult.value.history : [];
+  const fxHistory = fxHistoryResult.status === 'fulfilled' ? fxHistoryResult.value.history : fxValue?.history || [];
+  const goldKrwHistory = alignConvertedMetalHistory(goldHistory, fxHistory);
+  const silverKrwHistory = silverHistory.some((point) => Number.isFinite(Number(point.krwPerGram)))
+    ? silverHistory
+      .map((point) => ({ date: point.date, value: Number(point.krwPerGram) }))
+      .filter((point) => Number.isFinite(point.value))
+    : alignConvertedMetalHistory(silverHistory, fxHistory);
+  const goldWithHistory = { ...goldValue, history: goldHistory };
+  const silverWithHistory = silverValue ? { ...silverValue, history: silverHistory } : null;
+  const goldInternationalKrw = Number(goldValue.price) / TROY_OUNCE_GRAMS * Number(fxValue?.price);
+  const silverInternationalKrw = Number(silverValue?.gramPriceKrw) || (Number(silverValue?.price) / TROY_OUNCE_GRAMS * Number(fxValue?.price));
+  const goldPremium = premiumSnapshot(domesticGoldValue?.price, goldInternationalKrw);
+  const goldPremiumHistory = premiumHistoryFrom(domesticGoldValue?.history || [], goldKrwHistory);
+  const silverPremium = premiumSnapshot(domesticSilverValue?.price, silverInternationalKrw);
+  const silverPremiumHistory = premiumHistoryFrom(domesticSilverValue?.history || [], silverKrwHistory);
+
+  return {
+    provider: 'COMEX 금 선물 + KRX 금시장 + 한국금거래소',
+    updatedAt: new Date().toISOString(),
+    gold: goldWithHistory,
+    domesticGold: domesticGoldValue,
+    goldPremium: goldPremium ? { ...goldPremium, history: goldPremiumHistory } : null,
+    silver: silverWithHistory,
+    silverError,
+    domesticSilver: domesticSilverValue,
+    silverPremium: silverPremium ? {
+      ...silverPremium,
+      history: silverPremiumHistory,
+      note: '한국금거래소 Silver-3.75g 판매가를 1g으로 환산해 국제 은 현물 원화 환산가와 비교한 값입니다.',
+    } : null,
+    fx: fxValue,
+  };
+}
+
+async function getMarketHistory(kind, range = 'day') {
+  if (kind === 'silver') return getSilverHistory(range);
+  if (kind === 'domestic-silver') {
+    const silver = await getDomesticSilver(range);
+    return {
+      provider: silver.source,
+      symbol: silver.symbol,
+      range,
+      history: silver.history,
+    };
+  }
+  if (kind === 'silver-premium') {
+    const [domesticSilver, silverHistory, fxHistory] = await Promise.all([
+      getDomesticSilver(range),
+      getSilverHistory(range),
+      getUsdKrwHistory(range),
+    ]);
+    return {
+      provider: '한국금거래소 / Metals.Dev 은 현물 환산',
+      symbol: 'KoreaGoldX silver premium',
+      range,
+      history: premiumHistoryFrom(domesticSilver.history, alignConvertedMetalHistory(silverHistory.history, fxHistory.history)),
+    };
+  }
+  if (kind === 'gold-premium') {
+    const [domesticGold, goldHistory, fxHistory] = await Promise.all([
+      getDomesticGold(range),
+      getGoldHistory(range),
+      getUsdKrwHistory(range),
+    ]);
+    return {
+      provider: 'KRX 금시장 / 국제 금선물 환산',
+      symbol: 'KRX GOLD premium',
+      range,
+      history: premiumHistoryFrom(domesticGold.history, alignConvertedMetalHistory(goldHistory.history, fxHistory.history)),
+    };
+  }
+  return getGoldHistory(range);
 }
 
 function uniqueValues(values) {
@@ -1083,6 +1564,37 @@ async function getFredSeries(seriesId, limit = 14) {
   return validFredObservations(data.observations);
 }
 
+async function getOptionalFredSeries(seriesId, limit = 14) {
+  try {
+    return await getFredSeries(seriesId, limit);
+  } catch (error) {
+    return [];
+  }
+}
+
+async function getYahooIndicatorSeries(symbol, formatter = (value) => value) {
+  try {
+    const params = new URLSearchParams({ range: '1y', interval: '1d', includePrePost: 'false' });
+    const response = await fetch(`${YAHOO_FINANCE_CHART_BASE_URL}/${encodeURIComponent(symbol)}?${params}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 GoldSignal/1.0' },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!response.ok) throw new Error(`${symbol} indicator API failed with ${response.status}`);
+    const data = await response.json();
+    const result = data.chart?.result?.[0];
+    if (!result) throw new Error(data.chart?.error?.description || `${symbol} indicator data is unavailable`);
+    const history = yahooHistoryFromResult(result, 'year', symbol).history
+      .map((point) => ({
+        date: point.date,
+        value: formatter(point.value),
+      }))
+      .filter((point) => Number.isFinite(point.value));
+    return history.reverse();
+  } catch (error) {
+    return [];
+  }
+}
+
 function pctChange(current, previous) {
   if (!previous) return 0;
   return ((current - previous) / Math.abs(previous)) * 100;
@@ -1182,140 +1694,188 @@ function monthlyYoyIndicator(name, series, summary, related) {
   };
 }
 
+function withIndicatorSource(indicator, source) {
+  return {
+    ...indicator,
+    source,
+    isRealData: true,
+  };
+}
+
+function pendingIndicator(fallback, source) {
+  return {
+    ...fallback,
+    value: '연동 대기',
+    compare: '공식 데이터 연동 필요',
+    change: '-',
+    impact: 'neutral',
+    history: [],
+    source,
+    isPending: true,
+    isRealData: false,
+  };
+}
+
+function buildIndicator(series, fallback, source, build) {
+  if (!Array.isArray(series) || series.length < 2) {
+    return pendingIndicator(fallback, source);
+  }
+
+  return withIndicatorSource(build(series), source);
+}
+
 async function getIndicators() {
-  if (!hasConfiguredEnv('FRED_API_KEY')) {
-    return {
-      provider: 'sample',
-      ...fallbackIndicators,
-    };
-  }
+  const [
+    realYield,
+    treasury10y,
+    debtToGdp,
+    dollarIndex,
+    krw,
+    wti,
+    pce,
+    corePce,
+    cpi,
+    coreCpi,
+    payrolls,
+    unemployment,
+    wages,
+    retailSales,
+    gdp,
+    gld,
+  ] = await Promise.all([
+    getOptionalFredSeries('DFII10', 260),
+    getYahooIndicatorSeries(YAHOO_TREASURY_10Y_SYMBOL),
+    getOptionalFredSeries('GFDEGDQ188S', 12),
+    getYahooIndicatorSeries(YAHOO_DXY_SYMBOL),
+    getYahooIndicatorSeries(YAHOO_USD_KRW_SYMBOL),
+    getYahooIndicatorSeries(YAHOO_WTI_SYMBOL),
+    getOptionalFredSeries('PCEPI', 72),
+    getOptionalFredSeries('PCEPILFE', 72),
+    getOptionalFredSeries('CPIAUCSL', 72),
+    getOptionalFredSeries('CPILFESL', 72),
+    getOptionalFredSeries('PAYEMS', 24),
+    getOptionalFredSeries('UNRATE', 24),
+    getOptionalFredSeries('CES0500000003', 24),
+    getOptionalFredSeries('RSAFS', 24),
+    getOptionalFredSeries('A191RL1Q225SBEA', 12),
+    getYahooIndicatorSeries(YAHOO_GLD_SYMBOL),
+  ]);
 
-  try {
-    const [
-      realYield,
-      treasury10y,
-      debtToGdp,
-      dollarIndex,
-      krw,
-      wti,
-      pce,
-      corePce,
-      cpi,
-      coreCpi,
-      payrolls,
-      unemployment,
-      wages,
-      retailSales,
-      gdp,
-    ] = await Promise.all([
-      getFredSeries('DFII10', 260),
-      getFredSeries('DGS10', 260),
-      getFredSeries('GFDEGDQ188S', 12),
-      getFredSeries('DTWEXBGS', 260),
-      getFredSeries('DEXKOUS', 260),
-      getFredSeries('DCOILWTICO', 260),
-      getFredSeries('PCEPI', 72),
-      getFredSeries('PCEPILFE', 72),
-      getFredSeries('CPIAUCSL', 72),
-      getFredSeries('CPILFESL', 72),
-      getFredSeries('PAYEMS', 24),
-      getFredSeries('UNRATE', 24),
-      getFredSeries('CES0500000003', 24),
-      getFredSeries('RSAFS', 24),
-      getFredSeries('A191RL1Q225SBEA', 12),
-    ]);
+  const daily = [
+    buildIndicator(realYield, fallbackIndicators.daily[0], 'FRED DFII10', (series) => dailyRateIndicator('미국 10년물 실질금리', series, 'higherHurtsGold', fallbackIndicators.daily[0].summary, fallbackIndicators.daily[0].related)),
+    buildIndicator(treasury10y, fallbackIndicators.daily[1], 'Yahoo Finance ^TNX', (series) => dailyRateIndicator('미국 10년물 국채금리', series, 'higherHurtsGold', fallbackIndicators.daily[1].summary, fallbackIndicators.daily[1].related)),
+    buildIndicator(debtToGdp, fallbackIndicators.daily[2], 'FRED GFDEGDQ188S', (series) => periodRateIndicator('미국 GDP 대비 부채 비율', series, 'higherSupportsGold', fallbackIndicators.daily[2].summary, fallbackIndicators.daily[2].related)),
+    buildIndicator(dollarIndex, fallbackIndicators.daily[3], 'Yahoo Finance DX-Y.NYB', (series) => dailyValueIndicator('달러지수 DXY', series, 'higherHurtsGold', (value) => value.toFixed(2), fallbackIndicators.daily[3].summary, fallbackIndicators.daily[3].related)),
+    buildIndicator(krw, fallbackIndicators.daily[4], 'Yahoo Finance KRW=X', (series) => dailyValueIndicator('원/달러 환율', series, 'higherSupportsGold', (value) => `${value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}원`, fallbackIndicators.daily[4].summary, fallbackIndicators.daily[4].related)),
+    buildIndicator(wti, fallbackIndicators.daily[5], 'Yahoo Finance CL=F', (series) => dailyValueIndicator('유가', series, 'higherSupportsGold', (value) => `$${value.toFixed(2)}`, fallbackIndicators.daily[5].summary, fallbackIndicators.daily[5].related)),
+    buildIndicator(gld, fallbackIndicators.daily[6], 'Yahoo Finance GLD', (series) => dailyValueIndicator('GLD ETF 가격', series, 'higherSupportsGold', (value) => `$${value.toFixed(2)}`, fallbackIndicators.daily[6].summary, fallbackIndicators.daily[6].related)),
+  ];
 
+  const monthly = [
+    buildIndicator(pce, fallbackIndicators.monthly[0], 'FRED PCEPI', (series) => monthlyYoyIndicator('PCE', series, fallbackIndicators.monthly[0].summary, fallbackIndicators.monthly[0].related)),
+    buildIndicator(corePce, fallbackIndicators.monthly[1], 'FRED PCEPILFE', (series) => monthlyYoyIndicator('근원 PCE', series, fallbackIndicators.monthly[1].summary, fallbackIndicators.monthly[1].related)),
+    buildIndicator(cpi, fallbackIndicators.monthly[2], 'FRED CPIAUCSL', (series) => monthlyYoyIndicator('CPI', series, fallbackIndicators.monthly[2].summary, fallbackIndicators.monthly[2].related)),
+    buildIndicator(coreCpi, fallbackIndicators.monthly[3], 'FRED CPILFESL', (series) => monthlyYoyIndicator('근원 CPI', series, fallbackIndicators.monthly[3].summary, fallbackIndicators.monthly[3].related)),
+  ];
+
+  if (payrolls.length >= 3) {
     const payrollDelta = payrolls[0].value - payrolls[1].value;
-    const unemploymentDelta = unemployment[0].value - unemployment[1].value;
-    const wageDelta = wages[0].value - wages[1].value;
-    const retailDelta = pctChange(retailSales[0].value, retailSales[1].value);
-    const gdpDelta = gdp[0].value - gdp[1].value;
-
-    return {
-      provider: 'FRED',
-      daily: [
-        dailyRateIndicator('미국 10년물 실질금리', realYield, 'higherHurtsGold', fallbackIndicators.daily[0].summary, fallbackIndicators.daily[0].related),
-        dailyRateIndicator('미국 10년물 국채금리', treasury10y, 'higherHurtsGold', fallbackIndicators.daily[1].summary, fallbackIndicators.daily[1].related),
-        periodRateIndicator('미국 GDP 대비 부채 비율', debtToGdp, 'higherSupportsGold', fallbackIndicators.daily[2].summary, fallbackIndicators.daily[2].related),
-        dailyValueIndicator('달러지수 DXY', dollarIndex, 'higherHurtsGold', (value) => value.toFixed(2), fallbackIndicators.daily[3].summary, fallbackIndicators.daily[3].related),
-        dailyValueIndicator('원/달러 환율', krw, 'higherSupportsGold', (value) => `${value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}원`, fallbackIndicators.daily[4].summary, fallbackIndicators.daily[4].related),
-        dailyValueIndicator('유가', wti, 'higherSupportsGold', (value) => `$${value.toFixed(2)}`, fallbackIndicators.daily[5].summary, fallbackIndicators.daily[5].related),
-        fallbackIndicators.daily[6],
-      ],
-      monthly: [
-        monthlyYoyIndicator('PCE', pce, fallbackIndicators.monthly[0].summary, fallbackIndicators.monthly[0].related),
-        monthlyYoyIndicator('근원 PCE', corePce, fallbackIndicators.monthly[1].summary, fallbackIndicators.monthly[1].related),
-        monthlyYoyIndicator('CPI', cpi, fallbackIndicators.monthly[2].summary, fallbackIndicators.monthly[2].related),
-        monthlyYoyIndicator('근원 CPI', coreCpi, fallbackIndicators.monthly[3].summary, fallbackIndicators.monthly[3].related),
-        {
-          name: '고용보고서',
-          value: `${payrollDelta >= 0 ? '+' : ''}${Math.round(payrollDelta)}K`,
-          compare: `이전 ${Math.round(payrolls[1].value - payrolls[2].value)}K`,
-          change: payrollDelta >= 0 ? '고용 증가' : '고용 둔화',
-          impact: payrollDelta < 0 ? 'up' : 'down',
-          summary: fallbackIndicators.monthly[4].summary,
-          related: fallbackIndicators.monthly[4].related,
-          history: payrolls
-            .slice(0, -1)
-            .map((item, index) => ({ date: item.date, value: item.value - payrolls[index + 1].value }))
-            .reverse(),
-        },
-        {
-          name: '실업률',
-          value: `${unemployment[0].value.toFixed(1)}%`,
-          compare: `이전 ${unemployment[1].value.toFixed(1)}%`,
-          change: unemploymentDelta >= 0 ? '실업률 상승' : '실업률 하락',
-          impact: unemploymentDelta >= 0 ? 'up' : 'down',
-          summary: fallbackIndicators.monthly[5].summary,
-          related: fallbackIndicators.monthly[5].related,
-          history: indicatorHistory(unemployment),
-        },
-        {
-          name: '임금',
-          value: formatPercent(pctChange(wages[0].value, wages[1].value)),
-          compare: `이전 ${wages[1].value.toFixed(2)}`,
-          change: wageDelta >= 0 ? '임금 상승' : '임금 둔화',
-          impact: wageDelta >= 0 ? 'down' : 'up',
-          summary: fallbackIndicators.monthly[6].summary,
-          related: fallbackIndicators.monthly[6].related,
-          history: wages
-            .slice(0, -1)
-            .map((item, index) => ({ date: item.date, value: pctChange(item.value, wages[index + 1].value) }))
-            .reverse(),
-        },
-        {
-          name: '소매판매',
-          value: formatPercent(retailDelta),
-          compare: `전월 ${retailSales[1].value.toLocaleString('en-US')}`,
-          change: retailDelta >= 0 ? '소비 증가' : '소비 둔화',
-          impact: retailDelta >= 0 ? 'down' : 'up',
-          summary: fallbackIndicators.monthly[7].summary,
-          related: fallbackIndicators.monthly[7].related,
-          history: retailSales
-            .slice(0, -1)
-            .map((item, index) => ({ date: item.date, value: pctChange(item.value, retailSales[index + 1].value) }))
-            .reverse(),
-        },
-        {
-          name: 'GDP',
-          value: `${gdp[0].value.toFixed(1)}%`,
-          compare: `이전 ${gdp[1].value.toFixed(1)}%`,
-          change: gdpDelta >= 0 ? '성장 확대' : '성장 둔화',
-          impact: gdpDelta >= 0 ? 'down' : 'up',
-          summary: fallbackIndicators.monthly[8].summary,
-          related: fallbackIndicators.monthly[8].related,
-          history: indicatorHistory(gdp),
-        },
-        fallbackIndicators.monthly[9],
-      ],
-    };
-  } catch (error) {
-    return {
-      provider: 'sample',
-      error: error.message,
-      ...fallbackIndicators,
-    };
+    monthly.push(withIndicatorSource({
+      name: '고용보고서',
+      value: `${payrollDelta >= 0 ? '+' : ''}${Math.round(payrollDelta)}K`,
+      compare: `이전 ${Math.round(payrolls[1].value - payrolls[2].value)}K`,
+      change: payrollDelta >= 0 ? '고용 증가' : '고용 둔화',
+      impact: payrollDelta < 0 ? 'up' : 'down',
+      summary: fallbackIndicators.monthly[4].summary,
+      related: fallbackIndicators.monthly[4].related,
+      history: payrolls
+        .slice(0, -1)
+        .map((item, index) => ({ date: item.date, value: item.value - payrolls[index + 1].value }))
+        .reverse(),
+    }, 'FRED PAYEMS'));
+  } else {
+    monthly.push(pendingIndicator(fallbackIndicators.monthly[4], 'FRED PAYEMS'));
   }
+
+  if (unemployment.length >= 2) {
+    const unemploymentDelta = unemployment[0].value - unemployment[1].value;
+    monthly.push(withIndicatorSource({
+      name: '실업률',
+      value: `${unemployment[0].value.toFixed(1)}%`,
+      compare: `이전 ${unemployment[1].value.toFixed(1)}%`,
+      change: unemploymentDelta >= 0 ? '실업률 상승' : '실업률 하락',
+      impact: unemploymentDelta >= 0 ? 'up' : 'down',
+      summary: fallbackIndicators.monthly[5].summary,
+      related: fallbackIndicators.monthly[5].related,
+      history: indicatorHistory(unemployment),
+    }, 'FRED UNRATE'));
+  } else {
+    monthly.push(pendingIndicator(fallbackIndicators.monthly[5], 'FRED UNRATE'));
+  }
+
+  if (wages.length >= 2) {
+    const wageDelta = wages[0].value - wages[1].value;
+    monthly.push(withIndicatorSource({
+      name: '임금',
+      value: formatPercent(pctChange(wages[0].value, wages[1].value)),
+      compare: `이전 ${wages[1].value.toFixed(2)}`,
+      change: wageDelta >= 0 ? '임금 상승' : '임금 둔화',
+      impact: wageDelta >= 0 ? 'down' : 'up',
+      summary: fallbackIndicators.monthly[6].summary,
+      related: fallbackIndicators.monthly[6].related,
+      history: wages
+        .slice(0, -1)
+        .map((item, index) => ({ date: item.date, value: pctChange(item.value, wages[index + 1].value) }))
+        .reverse(),
+    }, 'FRED CES0500000003'));
+  } else {
+    monthly.push(pendingIndicator(fallbackIndicators.monthly[6], 'FRED CES0500000003'));
+  }
+
+  if (retailSales.length >= 2) {
+    const retailDelta = pctChange(retailSales[0].value, retailSales[1].value);
+    monthly.push(withIndicatorSource({
+      name: '소매판매',
+      value: formatPercent(retailDelta),
+      compare: `전월 ${retailSales[1].value.toLocaleString('en-US')}`,
+      change: retailDelta >= 0 ? '소비 증가' : '소비 둔화',
+      impact: retailDelta >= 0 ? 'down' : 'up',
+      summary: fallbackIndicators.monthly[7].summary,
+      related: fallbackIndicators.monthly[7].related,
+      history: retailSales
+        .slice(0, -1)
+        .map((item, index) => ({ date: item.date, value: pctChange(item.value, retailSales[index + 1].value) }))
+        .reverse(),
+    }, 'FRED RSAFS'));
+  } else {
+    monthly.push(pendingIndicator(fallbackIndicators.monthly[7], 'FRED RSAFS'));
+  }
+
+  if (gdp.length >= 2) {
+    const gdpDelta = gdp[0].value - gdp[1].value;
+    monthly.push(withIndicatorSource({
+      name: 'GDP',
+      value: `${gdp[0].value.toFixed(1)}%`,
+      compare: `이전 ${gdp[1].value.toFixed(1)}%`,
+      change: gdpDelta >= 0 ? '성장 확대' : '성장 둔화',
+      impact: gdpDelta >= 0 ? 'down' : 'up',
+      summary: fallbackIndicators.monthly[8].summary,
+      related: fallbackIndicators.monthly[8].related,
+      history: indicatorHistory(gdp),
+    }, 'FRED A191RL1Q225SBEA'));
+  } else {
+    monthly.push(pendingIndicator(fallbackIndicators.monthly[8], 'FRED A191RL1Q225SBEA'));
+  }
+
+  monthly.push(pendingIndicator(fallbackIndicators.monthly[9], '세계금협회/공식 중앙은행 금 보유량 API 필요'));
+
+  return {
+    provider: hasConfiguredEnv('FRED_API_KEY') ? 'Yahoo Finance + FRED' : 'Yahoo Finance',
+    needsFredApiKey: !hasConfiguredEnv('FRED_API_KEY'),
+    updatedAt: new Date().toISOString(),
+    daily,
+    monthly,
+  };
 }
 
 function handleRequest(req, res) {
@@ -1334,11 +1894,19 @@ function handleRequest(req, res) {
         },
         fred: {
           configured: hasConfiguredEnv('FRED_API_KEY'),
-          provider: hasConfiguredEnv('FRED_API_KEY') ? 'FRED' : 'sample',
+          provider: hasConfiguredEnv('FRED_API_KEY') ? 'FRED' : 'FRED API key required for release indicators',
         },
         domesticGold: {
           configured: hasConfiguredEnv('DATA_GO_KR_SERVICE_KEY'),
           provider: hasConfiguredEnv('DATA_GO_KR_SERVICE_KEY') ? 'KRX 금시장' : 'not configured',
+        },
+        silver: {
+          configured: hasConfiguredEnv('METALS_DEV_API_KEY'),
+          provider: hasConfiguredEnv('METALS_DEV_API_KEY') ? 'Metals.Dev' : 'not configured',
+        },
+        domesticSilver: {
+          configured: true,
+          provider: '한국금거래소 Silver-3.75g',
         },
         news: {
           configured: true,
@@ -1377,20 +1945,21 @@ function handleRequest(req, res) {
   }
 
   if (url.pathname === '/api/metal-prices') {
-    getGoldPrice().then((gold) => {
+    getMarketSnapshot().then((snapshot) => {
       sendJson(res, {
-        updatedAt: new Date().toISOString(),
-        provider: hasConfiguredEnv('GOLD_API_KEY') ? 'GoldAPI.io' : gold.source,
         endpoint: `${GOLD_API_BASE_URL}/:symbol/:currency/:date?`,
-        gold,
+        ...snapshot,
       });
+    }).catch((error) => {
+      sendJson(res, { error: error.message }, 502);
     });
     return;
   }
 
   if (url.pathname === '/api/metal-prices/history') {
     const range = url.searchParams.get('range') || 'day';
-    getGoldHistory(range).then((history) => {
+    const kind = url.searchParams.get('kind') || 'gold';
+    getMarketHistory(kind, range).then((history) => {
       sendJson(res, { updatedAt: new Date().toISOString(), ...history });
     }).catch((error) => {
       sendJson(res, { error: error.message, history: [] }, 502);

@@ -54,13 +54,13 @@ let dailyIndicators = [
     related: 'CPI, PCE, 기대인플레이션',
   },
   {
-    name: '금 ETF 흐름',
-    value: '+$286M',
-    compare: '전일 +$92M',
-    change: '순유입 확대',
+    name: 'GLD ETF 가격',
+    value: '$215.40',
+    compare: '전일 $213.80',
+    change: '+0.75%',
     impact: 'up',
-    summary: 'ETF 순유입은 투자 수요가 늘고 있음을 보여주는 중기 우호 신호입니다.',
-    related: 'GLD, IAU, 글로벌 ETF 보유량',
+    summary: 'GLD는 대표적인 금 현물 ETF라서 가격 상승은 금 투자 수요와 국제 금값 흐름을 함께 확인하는 참고 지표가 될 수 있습니다.',
+    related: '국제 금값, ETF 투자 수요, 달러지수',
   },
 ];
 
@@ -161,12 +161,12 @@ const homeIndices = [
     points: [76.9, 77.2, 77.0, 77.6, 78.0, 78.2, 78.6],
   },
   {
-    name: '금 ETF 흐름',
-    value: '+$286M',
-    change: '순유입 확대',
+    name: 'GLD ETF 가격',
+    value: '$215.40',
+    change: '+0.75%',
     trend: 'up',
-    details: ['전일 +$92M', '투자 수요 증가'],
-    points: [42, 80, 55, 120, 166, 220, 286],
+    details: ['전일 $213.80', '금 ETF 가격'],
+    points: [208.2, 209.6, 211.1, 210.8, 212.4, 213.8, 215.4],
   },
 ];
 
@@ -431,6 +431,7 @@ let newsLoading = false;
 let newsLoadedOnce = false;
 const goldHistoryCache = new Map();
 const domesticGoldHistoryCache = new Map();
+const marketActualHistoryCache = new Map();
 let goldHistoryLoading = false;
 
 const views = {
@@ -537,11 +538,12 @@ function renderIndicators() {
     button.setAttribute('aria-selected', String(isActive));
   });
 
-  const provider = indicatorMeta.provider === 'FRED' ? 'FRED' : '샘플 데이터';
+  const provider = indicatorMeta.provider || '데이터 확인 중';
   const updatedAt = indicatorMeta.updatedAt
     ? new Date(indicatorMeta.updatedAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '업데이트 확인 중';
-  document.querySelector('#indicatorDataMeta').textContent = `${provider} · ${updatedAt}`;
+  const fredNotice = indicatorMeta.needsFredApiKey ? ' · 일부 발표 지표 FRED 키 필요' : '';
+  document.querySelector('#indicatorDataMeta').textContent = `${provider} · ${updatedAt}${fredNotice}`;
 }
 
 const indicatorRangeOptions = {
@@ -578,6 +580,10 @@ function indicatorChartSeries(item, range, indicatorIndex) {
     return { points: filtered.length >= 2 ? filtered : history, isSample: false };
   }
 
+  if (item.isPending) {
+    return { points: [], isSample: false, isPending: true };
+  }
+
   const current = indicatorNumericValue(item);
   const direction = String(item.change).trim().startsWith('-') ? -1 : 1;
   const amplitude = range === 'week' ? 0.008 : range === 'month' ? 0.025 : 0.08;
@@ -598,6 +604,14 @@ function indicatorChartSeries(item, range, indicatorIndex) {
 
 function indicatorHistoryChart(item, range, indicatorIndex) {
   const series = indicatorChartSeries(item, range, indicatorIndex);
+  if (series.isPending || series.points.length < 2) {
+    return {
+      isSample: false,
+      isPending: true,
+      markup: '<div class="indicator-chart-empty">실제 데이터 연동을 준비 중입니다.</div>',
+    };
+  }
+
   const values = series.points.map((point) => point.value);
   const width = 700;
   const height = 320;
@@ -651,7 +665,7 @@ function renderIndicatorDetail() {
     <section class="indicator-chart-section" aria-labelledby="indicatorChartTitle">
       <div class="indicator-chart-heading">
         <h3 id="indicatorChartTitle">지표 추이</h3>
-        <span class="gold-data-status">${chart.isSample ? '샘플 차트' : '실제 데이터'}</span>
+        <span class="gold-data-status">${chart.isPending ? '연동 대기' : chart.isSample ? '샘플 차트' : '실제 데이터'}</span>
       </div>
       <div class="indicator-range-control" role="group" aria-label="차트 기간 선택">
         ${Object.entries(indicatorRangeOptions).map(([key, option]) => `
@@ -673,7 +687,7 @@ function renderIndicatorDetail() {
     <section class="indicator-detail-info">
       <div><span>확인 주기</span><strong>${indicatorSchedule(state.indicatorType)}</strong></div>
       <div><span>관련 지표</span><strong>${item.related || '확인 중'}</strong></div>
-      <div><span>데이터 출처</span><strong>${indicatorMeta.provider === 'FRED' ? 'FRED' : '샘플 데이터'}</strong></div>
+      <div><span>데이터 출처</span><strong>${item.source || indicatorMeta.provider || '확인 중'}</strong></div>
     </section>
   `;
 }
@@ -686,8 +700,9 @@ async function loadIndicators() {
     dailyIndicators = data.daily || dailyIndicators;
     monthlyIndicators = data.monthly || monthlyIndicators;
     indicatorMeta = {
-      provider: data.provider || 'sample',
+      provider: data.provider || '데이터 확인 중',
       updatedAt: data.updatedAt || null,
+      needsFredApiKey: Boolean(data.needsFredApiKey),
     };
     renderIndicators();
   } catch (error) {
@@ -863,6 +878,9 @@ function marketHistory(item, range, marketIndex) {
   if (marketIndex === 1 && domesticGoldHistoryCache.has(range)) {
     return domesticGoldHistoryCache.get(range).map((point) => point.value);
   }
+  if (marketActualHistoryCache.has(`${marketIndex}:${range}`)) {
+    return marketActualHistoryCache.get(`${marketIndex}:${range}`).map((point) => point.value);
+  }
   const config = marketRangeOptions[range];
   const current = marketNumericValue(item);
   const direction = item.trend === 'down' ? -1 : 1;
@@ -924,6 +942,17 @@ function renderMarketDetail() {
   const chart = marketHistoryChart(item, state.marketRange, state.selectedMarketIndex);
   const changeDirection = chart.changePercent > 0 ? '올랐습니다' : chart.changePercent < 0 ? '내렸습니다' : '변동이 없습니다';
   const changeClass = chart.changePercent > 0 ? 'is-up' : chart.changePercent < 0 ? 'is-down' : '';
+  const hasActualHistory = (state.selectedMarketIndex === 0 && goldHistoryCache.has(state.marketRange))
+    || (state.selectedMarketIndex === 1 && domesticGoldHistoryCache.has(state.marketRange))
+    || marketActualHistoryCache.has(`${state.selectedMarketIndex}:${state.marketRange}`);
+  const marketNote = item.marketStats?.note
+    || (state.selectedMarketIndex === 0 && goldHistoryCache.has(state.marketRange)
+      ? 'COMEX 금 선물 시세 기준이며 거래소 상황에 따라 지연될 수 있습니다.'
+      : state.selectedMarketIndex === 1 && domesticGoldHistoryCache.has(state.marketRange)
+        ? 'KRX 금시장 99.99_1kg 종가 기준이며 영업일 다음 날 갱신됩니다.'
+        : hasActualHistory
+          ? '실제 시장 데이터 기반 차트이며 거래소와 데이터 제공처 상황에 따라 지연될 수 있습니다.'
+          : '현재 기간별 차트는 샘플 데이터입니다. 실제 투자 판단에는 사용하지 마세요.');
 
   document.querySelector('#marketDetailTitle').textContent = item.name;
   document.querySelector('#marketDetailContent').innerHTML = `
@@ -933,7 +962,7 @@ function renderMarketDetail() {
         <strong>${item.value}</strong>
         <p class="market-detail-change ${changeClass}">${marketRangeOptions[state.marketRange].label}간 ${Math.abs(chart.changePercent).toFixed(2)}% ${changeDirection}</p>
       </div>
-      <span class="gold-data-status">${(state.selectedMarketIndex === 0 && goldHistoryCache.has(state.marketRange)) || (state.selectedMarketIndex === 1 && domesticGoldHistoryCache.has(state.marketRange)) ? '실제 데이터' : goldHistoryLoading ? '불러오는 중' : '샘플 시계열'}</span>
+      <span class="gold-data-status">${hasActualHistory ? '실제 데이터' : goldHistoryLoading ? '불러오는 중' : '샘플 시계열'}</span>
     </header>
     <div class="market-range-control" role="group" aria-label="차트 기간 선택">
       ${Object.entries(marketRangeOptions).map(([key, option]) => `
@@ -949,11 +978,7 @@ function renderMarketDetail() {
       <div><dt>기간 최저</dt><dd>${formatMarketValue(item, chart.minimum)}</dd></div>
       <div><dt>현재 가격</dt><dd>${item.value}</dd></div>
     </dl>
-    ${state.selectedMarketIndex === 0 && goldHistoryCache.has(state.marketRange)
-      ? '<p class="market-detail-note">COMEX 금 선물 시세 기준이며 거래소 상황에 따라 지연될 수 있습니다.</p>'
-      : state.selectedMarketIndex === 1 && domesticGoldHistoryCache.has(state.marketRange)
-        ? '<p class="market-detail-note">KRX 금시장 99.99_1kg 종가 기준이며 영업일 다음 날 갱신됩니다.</p>'
-      : '<p class="market-detail-note">현재 기간별 차트는 샘플 데이터입니다. 실제 투자 판단에는 사용하지 마세요.</p>'}
+    <p class="market-detail-note">${marketNote}</p>
   `;
 }
 
@@ -974,6 +999,98 @@ function normalizeDomesticGoldPrice(gold) {
       volume: gold.volume,
       updatedAt: gold.updatedAt,
       isFallback: false,
+    },
+  };
+}
+
+function signedPercent(value, digits = 2) {
+  const number = Number(value || 0);
+  return `${number > 0 ? '+' : ''}${number.toFixed(digits)}%`;
+}
+
+function trendFromNumber(value) {
+  const number = Number(value || 0);
+  if (number > 0) return 'up';
+  if (number < 0) return 'down';
+  return 'neutral';
+}
+
+function normalizeInternationalSilverPrice(silver) {
+  const changePercent = Number(silver.changePercent || 0);
+  const price = Number(silver.price || 0);
+  const previousClose = Number(silver.previousClose || price);
+  return {
+    name: '국제 은값',
+    value: formatUsd(price),
+    change: signedPercent(changePercent),
+    trend: trendFromNumber(changePercent),
+    details: ['트로이온스', silver.source ? `${silver.source} 기준` : '은 선물 기준'],
+    points: [previousClose, Number(silver.open || previousClose), price],
+    marketStats: {
+      open: silver.open,
+      low: silver.low,
+      high: silver.high,
+      previousClose: silver.previousClose,
+      updatedAt: silver.updatedAt,
+      isFallback: false,
+    },
+  };
+}
+
+function normalizeDomesticSilverPrice(silver) {
+  const changePercent = Number(silver.changePercent || 0);
+  const price = Number(silver.price || 0);
+  const previousClose = Number(silver.previousClose || price);
+  return {
+    name: '국내 은값',
+    value: `${Math.round(price).toLocaleString('ko-KR')}원/g`,
+    change: signedPercent(changePercent),
+    trend: trendFromNumber(changePercent),
+    details: [
+      '한국금거래소 기준',
+      silver.sellPrice3_75g ? `3.75g ${Number(silver.sellPrice3_75g).toLocaleString('ko-KR')}원` : 'Silver-3.75g 판매가',
+    ],
+    points: (silver.history || []).slice(-7).map((point) => Number(point.value)),
+    marketStats: {
+      previousClose,
+      updatedAt: silver.updatedAt,
+      isFallback: false,
+      note: '한국금거래소 Silver-3.75g 판매가를 1g 기준으로 환산해 표시합니다.',
+    },
+  };
+}
+
+function normalizePremiumPrice(name, premium, fallbackDetails) {
+  const value = Number(premium.value || 0);
+  return {
+    name,
+    value: premium.label || `${Math.abs(value).toFixed(1)}% ${value >= 0 ? '비쌈' : '쌈'}`,
+    change: premium.history?.length > 1
+      ? `${value - Number(premium.history[premium.history.length - 2].value) > 0 ? '+' : ''}${(value - Number(premium.history[premium.history.length - 2].value)).toFixed(1)}%p`
+      : '실시간 계산',
+    trend: premium.trend || trendFromNumber(value),
+    details: fallbackDetails,
+    points: (premium.history || []).slice(-7).map((point) => Number(point.value)),
+    marketStats: {
+      updatedAt: new Date().toISOString(),
+      isFallback: false,
+      note: premium.note || '국내 가격을 국제 가격 원화 환산가와 비교한 값입니다.',
+    },
+  };
+}
+
+function pendingMarketPrice(name, details, note = '실제 데이터 API 연결이 필요합니다.') {
+  return {
+    name,
+    value: '연동 대기',
+    change: 'API 키 필요',
+    trend: 'neutral',
+    details,
+    points: [0, 0, 0],
+    marketStats: {
+      updatedAt: null,
+      isFallback: true,
+      note,
     },
   };
 }
@@ -1009,6 +1126,38 @@ async function loadGoldHistory(range = state.marketRange, { force = false } = {}
     const history = (data.history || []).filter((point) => Number.isFinite(Number(point.value)));
     if (history.length < 2) throw new Error('금값 시계열 부족');
     goldHistoryCache.set(range, history);
+  } catch (error) {
+    showToast('실제 차트를 불러오지 못해 샘플 추이를 표시합니다.');
+  } finally {
+    goldHistoryLoading = false;
+    renderMarketDetail();
+  }
+}
+
+function marketHistoryKind(index) {
+  return {
+    2: 'gold-premium',
+    3: 'silver',
+    4: 'domestic-silver',
+    5: 'silver-premium',
+  }[index];
+}
+
+async function loadMarketActualHistory(index, range = state.marketRange) {
+  const kind = marketHistoryKind(index);
+  if (!kind || marketActualHistoryCache.has(`${index}:${range}`) || goldHistoryLoading) {
+    renderMarketDetail();
+    return;
+  }
+  goldHistoryLoading = true;
+  renderMarketDetail();
+  try {
+    const response = await fetch(`/api/metal-prices/history?kind=${encodeURIComponent(kind)}&range=${encodeURIComponent(range)}`);
+    if (!response.ok) throw new Error('시세 시계열 응답 실패');
+    const data = await response.json();
+    const history = (data.history || []).filter((point) => Number.isFinite(Number(point.value)));
+    if (history.length < 2) throw new Error('시세 시계열 부족');
+    marketActualHistoryCache.set(`${index}:${range}`, history);
   } catch (error) {
     showToast('실제 차트를 불러오지 못해 샘플 추이를 표시합니다.');
   } finally {
@@ -1068,9 +1217,43 @@ async function loadMetalPrices() {
     const data = await response.json();
     const goldPrice = normalizeGoldMarketPrice(data.gold);
     marketPrices[0] = goldPrice;
+    if (data.gold?.history?.length) goldHistoryCache.set('day', data.gold.history);
+    if (data.domesticGold?.history?.length) {
+      domesticGoldHistoryCache.set('day', data.domesticGold.history);
+      marketPrices[1] = normalizeDomesticGoldPrice(data.domesticGold);
+    } else {
+      marketPrices[1] = pendingMarketPrice('국내 금값', ['KRX 금시장 API 필요', '더미 표시 중단'], '실제 국내 금값을 표시하려면 DATA_GO_KR_SERVICE_KEY가 필요합니다.');
+    }
+    if (data.goldPremium) {
+      marketPrices[2] = normalizePremiumPrice('국내 금 가격 수준', data.goldPremium, ['국제 환산가와 비교', 'KRX 금시장 기준']);
+      if (data.goldPremium.history?.length) marketActualHistoryCache.set('2:day', data.goldPremium.history);
+    } else {
+      marketPrices[2] = pendingMarketPrice('국내 금 가격 수준', ['국내 금값 연동 후 계산', 'KRX API 키 필요'], '국내 금값과 국제 금값이 모두 연결되면 자동 계산됩니다.');
+    }
+    if (data.silver) {
+      marketPrices[3] = normalizeInternationalSilverPrice(data.silver);
+      if (data.silver.history?.length) marketActualHistoryCache.set('3:day', data.silver.history);
+    } else {
+      const silverReason = data.silverError?.includes('quota') || data.silverError?.includes('exhausted')
+        ? 'Metals.Dev 월 사용량 초과'
+        : 'Metals.Dev API 확인 필요';
+      marketPrices[3] = pendingMarketPrice('국제 은값', [silverReason, '공식 은 현물 시세'], data.silverError || '국제 은값은 Metals.Dev 응답이 정상일 때 표시됩니다.');
+    }
+    if (data.domesticSilver) {
+      marketPrices[4] = normalizeDomesticSilverPrice(data.domesticSilver);
+      if (data.domesticSilver.history?.length) marketActualHistoryCache.set('4:day', data.domesticSilver.history);
+    } else {
+      marketPrices[4] = pendingMarketPrice('국내 은값', ['한국금거래소 연결 대기', 'Silver-3.75g 기준'], '한국금거래소 국내 은값 응답이 정상일 때 표시됩니다.');
+    }
+    if (data.silverPremium) {
+      marketPrices[5] = normalizePremiumPrice('국내 은 가격 수준', data.silverPremium, ['국제 환산가와 비교', '한국금거래소 기준']);
+      if (data.silverPremium.history?.length) marketActualHistoryCache.set('5:day', data.silverPremium.history);
+    } else {
+      marketPrices[5] = pendingMarketPrice('국내 은 가격 수준', ['국내 은값과 국제 은값 필요', '한국금거래소 기준'], data.silverError || '국내 은값과 국제 은값이 모두 연결되면 자동 계산됩니다.');
+    }
     renderMarketBoard();
   } catch (error) {
-    showToast('국제 금값 API 연결 전이라 샘플 시세를 표시합니다.');
+    showToast('실제 시세 API 연결 전이라 일부 샘플 시세를 표시합니다.');
   }
 }
 
@@ -1405,6 +1588,7 @@ document.body.addEventListener('click', (event) => {
     setView('marketDetail');
     if (state.selectedMarketIndex === 0) loadGoldHistory('day');
     if (state.selectedMarketIndex === 1) loadDomesticGold('day').then(() => renderMarketDetail());
+    if (state.selectedMarketIndex > 1) loadMarketActualHistory(state.selectedMarketIndex, 'day');
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
@@ -1414,7 +1598,7 @@ document.body.addEventListener('click', (event) => {
     state.marketRange = rangeButton.dataset.marketRange;
     if (state.selectedMarketIndex === 0) loadGoldHistory(state.marketRange);
     else if (state.selectedMarketIndex === 1) loadDomesticGold(state.marketRange).then(() => renderMarketDetail());
-    else renderMarketDetail();
+    else loadMarketActualHistory(state.selectedMarketIndex, state.marketRange);
   }
 });
 

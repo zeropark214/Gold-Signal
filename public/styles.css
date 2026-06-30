@@ -1237,6 +1237,15 @@ textarea:focus-visible {
   background: var(--surface-2);
 }
 
+.indicator-chart-empty {
+  display: grid;
+  min-height: 288px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .indicator-history-chart {
   width: 100%;
   height: auto;
